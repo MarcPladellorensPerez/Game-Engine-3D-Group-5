@@ -42,6 +42,30 @@ int main(int argc, char* argv[]) {
 	if (gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress)) == 0)
 		return -1;
 
+	glViewport(0, 0, wWidth, wHeight);
+	glClearColor(0.1f, 0.25f, 0.5f, 1.0f);
+	//1. 2.
+	//float v[] = { -0.5f, -0.5f, 0.0f, 0.5f, -0.5f, 0.0f, 0.0f, 0.5f, 0.0f };
+	//float c[] = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+	//GLuint buffs[2];
+	//glGenBuffers(2, buffs);
+	//glBindBuffer(GL_ARRAY_BUFFER, buffs[0]);
+	//glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STATIC_DRAW);
+	//glBindBuffer(GL_ARRAY_BUFFER, buffs[1]);
+	//glBufferData(GL_ARRAY_BUFFER, sizeof(c), c, GL_STATIC_DRAW);
+
+	//3.
+	float vertices[] = {
+	-0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 
+	 0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 
+	 0.5f,  0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 
+	-0.5f,  0.5f, 0.0f, 1.0f, 1.0f, 0.0f  
+	};
+	GLuint vBuff;
+	glGenBuffers(1, &vBuff);
+	glBindBuffer(GL_ARRAY_BUFFER, vBuff);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
 	bool running = true;
 	while (running)
 	{
@@ -50,8 +74,46 @@ int main(int argc, char* argv[]) {
 		{
 			if (e.type == SDL_EVENT_QUIT)
 				running = false;
+			else if (e.type == SDL_EVENT_WINDOW_RESIZED)
+			{
+				wWidth = e.window.data1;
+				wHeight = e.window.data2;
+				glViewport(0, 0, wWidth, wHeight);
+			}
 		}
 
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		//0.glBegin(GL_TRIANGLES);
+		//0.glVertex3f(-0.5f, -0.5f, 0.0f);
+		//0.//glVertex3fv(v);
+		//0.glColor3f(1.0f, 0.0f, 0.0f);
+		//0.//glColor3fv(c);
+		//0.glVertex3f(0.5f, -0.5f, 0.0f);
+		//0.//glVertex3fv(&v[3]);
+		//0.glColor3f(0.0f, 1.0f, 0.0f);
+		//0.//glColor3fv(&c[3]);
+		//0.glVertex3f(0.0f, 0.5f, 0.0f);
+		//0.//glVertex3fv(&v[6]);
+		//0.glColor3f(0.0f, 0.0f, 1.0f);
+		//0.//glColor3fv(&c[6]);
+		//0.glEnd();
+		//1. 2. 3.
+		glEnableClientState(GL_VERTEX_ARRAY);
+		glEnableClientState(GL_COLOR_ARRAY);
+		//1. glVertexPointer(3, GL_FLOAT, 0, v);
+		//1. glColorPointer(3, GL_FLOAT, 0, c);
+		//2. glBindBuffer(GL_ARRAY_BUFFER, buffs[0]);
+		//2. glVertexPointer(3, GL_FLOAT, 0, NULL);
+		//2. glBindBuffer(GL_ARRAY_BUFFER, buffs[1]);
+		//2. glColorPointer(3, GL_FLOAT, 0, NULL);
+
+		//3.
+		glBindBuffer(GL_ARRAY_BUFFER, vBuff);
+		glVertexPointer(3, GL_FLOAT, sizeof(float) * 6, NULL);
+		glColorPointer(3, GL_FLOAT, sizeof(float) * 6, reinterpret_cast<void*>(sizeof(float) * 3));
+
+		//1. 2. 3.
+		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
 		SDL_GL_SwapWindow(wdn);
 	}
