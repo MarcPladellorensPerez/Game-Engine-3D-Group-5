@@ -1,6 +1,10 @@
 {
   "dependencies": [
     "glad",
-    "sdl3"
+    "sdl3",
+    "imgui",
+    "assimp",
+    "devil",
+    "glm"
   ]
 }
