@@ -126,13 +126,13 @@ void ModuleEditor::DrawConfigurationWindow()
     if (ImGui::CollapsingHeader("Application"))
     {
         char title[25];
-        sprintf(title, "Framerate %.1f", fpsLog.back());
-        ImGui::PlotHistogram("##framerate", &fpsLog[0], fpsLog.size(), 0, title, 0.0f, 100.0f, ImVec2(310, 100));
+        snprintf(title, sizeof(title), "Framerate %.1f", fpsLog.back());
+        ImGui::PlotHistogram("##framerate", &fpsLog[0], (int)fpsLog.size(), 0, title, 0.0f, 100.0f, ImVec2(310, 100));
     }
     if (ImGui::CollapsingHeader("Hardware"))
     {
         ImGui::Text("System RAM: %d MB", SDL_GetSystemRAM());
-        ImGui::Text("CPU Cores: %d", SDL_GetSystemLogicalCoreCount());
+        
     }
     ImGui::End();
 }

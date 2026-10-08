@@ -20,7 +20,7 @@ int main(int argc, char* argv[])
         SDL_Event e;
         while (SDL_PollEvent(&e))
         {
-            extern void ImGui_ImplSDL3_ProcessEvent(const SDL_Event* event);
+            
             ImGui_ImplSDL3_ProcessEvent(&e);
             if (e.type == SDL_EVENT_QUIT)
                 running = false;
