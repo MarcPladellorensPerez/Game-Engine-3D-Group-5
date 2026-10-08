@@ -1,6 +1,7 @@
-﻿#include "Application.h"
+#include "Application.h"
 #include "ModuleWindow.h"
 #include "ModuleRender.h"
+#include "ModuleEditor.h"
 
 Application* App = nullptr;
 
@@ -8,9 +9,11 @@ Application::Application()
 {
     window = new ModuleWindow();
     renderer = new ModuleRender();
+    editor = new ModuleEditor();
 
     modules.push_back(window);
     modules.push_back(renderer);
+    modules.push_back(editor);
 }
 
 Application::~Application()

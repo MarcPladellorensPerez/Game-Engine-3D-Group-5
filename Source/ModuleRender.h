@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "Module.h"
 #include <SDL3/SDL.h>
 #include <glad/glad.h>
@@ -14,6 +14,9 @@ public:
     UpdateStatus Update() override;
     UpdateStatus PostUpdate() override;
     bool CleanUp() override;
+
+public:
+    SDL_GLContext GetContext() const { return context; }
 
 private:
     SDL_GLContext context;

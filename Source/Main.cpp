@@ -1,5 +1,6 @@
-﻿#include "Application.h"
+#include "Application.h"
 #include <SDL3/SDL_main.h>
+#include <backends/imgui_impl_sdl3.h>
 
 int main(int argc, char* argv[])
 {
@@ -19,6 +20,8 @@ int main(int argc, char* argv[])
         SDL_Event e;
         while (SDL_PollEvent(&e))
         {
+            extern void ImGui_ImplSDL3_ProcessEvent(const SDL_Event* event);
+            ImGui_ImplSDL3_ProcessEvent(&e);
             if (e.type == SDL_EVENT_QUIT)
                 running = false;
         }
