@@ -1,6 +1,6 @@
 #include "Application.h"
 #include <SDL3/SDL_main.h>
-#include <backends/imgui_impl_sdl3.h>
+#include <imgui_impl_sdl3.h>
 
 int main(int argc, char* argv[])
 {

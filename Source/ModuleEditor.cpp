@@ -1,11 +1,11 @@
-﻿#include "ModuleEditor.h"
+#include "ModuleEditor.h"
 #include "Application.h"
 #include "ModuleWindow.h"
 #include "ModuleRender.h"
 #include <SDL3/SDL.h>
 #include <imgui.h>
-#include <backends/imgui_impl_sdl3.h>
-#include <backends/imgui_impl_opengl3.h>
+#include <imgui_impl_sdl3.h>
+#include <imgui_impl_opengl3.h>
 
 ModuleEditor::ModuleEditor() {}
 ModuleEditor::~ModuleEditor() {}

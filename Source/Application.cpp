@@ -18,7 +18,7 @@ Application::Application()
 
 Application::~Application()
 {
-    for (int i = modules.size() - 1; i >= 0; --i)
+    for (int i = static_cast<int>(modules.size()) - 1; i >= 0; --i)
     {
         delete modules[i];
     }
@@ -69,7 +69,7 @@ UpdateStatus Application::Update()
 bool Application::CleanUp()
 {
     bool ret = true;
-    for (int i = modules.size() - 1; i >= 0; --i)
+    for (int i = static_cast<int>(modules.size()) - 1; i >= 0; --i)
     {
         if (!modules[i]->CleanUp()) ret = false;
     }
