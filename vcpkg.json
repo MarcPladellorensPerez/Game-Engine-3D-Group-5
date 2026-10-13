@@ -8,6 +8,7 @@
     },
     "assimp",
     "devil",
-    "glm"
+    "glm",
+    "stb"
   ]
 }
