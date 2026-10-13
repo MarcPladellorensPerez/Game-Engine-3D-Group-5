@@ -2,8 +2,39 @@
 #include "ModuleWindow.h"
 #include "ModuleRender.h"
 #include "ModuleEditor.h"
+#include <vector>
+#include <string>
+#include <cstdio>
+#include <cstdarg>
 
 Application* App = nullptr;
+static std::vector<std::string> pendingLogs;
+
+void Log(const char* format, ...)
+{
+    static char tmp_string[4096];
+    va_list ap;
+    va_start(ap, format);
+    vsnprintf(tmp_string, sizeof(tmp_string), format, ap);
+    va_end(ap);
+
+    SDL_Log("%s", tmp_string);
+
+    if (App && App->editor)
+    {
+        for (const auto& pending : pendingLogs)
+        {
+            App->editor->AddLog("%s\n", pending.c_str());
+        }
+        pendingLogs.clear();
+
+        App->editor->AddLog("%s\n", tmp_string);
+    }
+    else
+    {
+        pendingLogs.push_back(tmp_string);
+    }
+}
 
 Application::Application()
 {

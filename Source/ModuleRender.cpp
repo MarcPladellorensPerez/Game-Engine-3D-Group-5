@@ -1,4 +1,4 @@
-﻿#include "ModuleRender.h"
+#include "ModuleRender.h"
 #include "Application.h"
 #include "ModuleWindow.h"
 
@@ -15,7 +15,8 @@ bool ModuleRender::Init()
     if (gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress)) == 0) return false;
 
     glViewport(0, 0, App->window->GetWidth(), App->window->GetHeight());
-    glClearColor(0.1f, 0.25f, 0.5f, 1.0f);
+    glClearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
+    glEnable(GL_DEPTH_TEST);
 
     float vertices[] = {
         -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 
@@ -33,7 +34,21 @@ bool ModuleRender::Init()
 
 UpdateStatus ModuleRender::PreUpdate()
 {
+    glClearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    if (depthTest)
+        glEnable(GL_DEPTH_TEST);
+    else
+        glDisable(GL_DEPTH_TEST);
+
+    if (cullFace)
+        glEnable(GL_CULL_FACE);
+    else
+        glDisable(GL_CULL_FACE);
+
+    glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
+
     return UPDATE_CONTINUE;
 }
 

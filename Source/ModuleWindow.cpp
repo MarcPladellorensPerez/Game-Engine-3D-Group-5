@@ -1,4 +1,4 @@
-﻿#include "ModuleWindow.h"
+#include "ModuleWindow.h"
 #include <SDL3/SDL.h>
 
 ModuleWindow::ModuleWindow() {}
@@ -35,4 +35,32 @@ bool ModuleWindow::CleanUp()
         window = nullptr;
     }
     return true;
+}
+
+void ModuleWindow::SetFullscreen(bool enable)
+{
+    fullscreen = enable;
+    if (window != nullptr)
+    {
+        SDL_SetWindowFullscreen(window, fullscreen);
+    }
+}
+
+void ModuleWindow::SetResizable(bool enable)
+{
+    resizable = enable;
+    if (window != nullptr)
+    {
+        SDL_SetWindowResizable(window, resizable);
+    }
+}
+
+void ModuleWindow::SetSize(int w, int h)
+{
+    width = w;
+    height = h;
+    if (window != nullptr)
+    {
+        SDL_SetWindowSize(window, width, height);
+    }
 }

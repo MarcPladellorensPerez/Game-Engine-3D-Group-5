@@ -1,7 +1,9 @@
-﻿#pragma once
+#pragma once
 #include <SDL3/SDL.h>
 
-#define LOG(format, ...) SDL_Log(format, __VA_ARGS__)
+void Log(const char* format, ...);
+
+#define LOG(format, ...) Log(format, ##__VA_ARGS__)
 
 enum UpdateStatus
 {
