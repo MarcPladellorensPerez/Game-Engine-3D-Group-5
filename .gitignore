@@ -1,6 +1,88 @@
+# ==========================================
+# Build & Output Directories
+# ==========================================
 build/
-vcpkg_installed/
-.vs/
+bin/
 out/
+x64/
+x86/
+ARM/
+ARM64/
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+
+# ==========================================
+# Package Managers & Dependencies
+# ==========================================
+vcpkg_installed/
+vcpkg/
+
+# ==========================================
+# CMake
+# ==========================================
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
 CMakeUserPresets.json
+
+# ==========================================
+# Visual Studio
+# ==========================================
+.vs/
 *.user
+*.userosv
+*.userprefs
+*.suo
+*.sln.docstates
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.VC.opendb*
+
+# Visual Studio build artifacts
+*.obj
+*.o
+*.pch
+*.lib
+*.a
+*.la
+*.lo
+*.dll
+*.so
+*.so.*
+*.dylib
+*.exe
+*.pdb
+*.ilk
+*.idb
+*.exp
+*.tlog
+*.log
+
+# ==========================================
+# Visual Studio Code
+# ==========================================
+.vscode/
+
+# ==========================================
+# CLion / JetBrains
+# ==========================================
+.idea/
+cmake-build-*/
+
+# ==========================================
+# Operating System Files
+# ==========================================
+.DS_Store
+Thumbs.db
+Desktop.ini
