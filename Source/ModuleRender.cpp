@@ -71,7 +71,6 @@ UpdateStatus ModuleRender::Update()
 
 UpdateStatus ModuleRender::PostUpdate()
 {
-    SDL_GL_SwapWindow(App->window->GetWindow());
     return UPDATE_CONTINUE;
 }
 
