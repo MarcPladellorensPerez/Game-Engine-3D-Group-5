@@ -28,6 +28,10 @@ bool ModuleEditor::Init()
     ImGui_ImplSDL3_InitForOpenGL(App->window->GetWindow(), App->renderer->GetContext());
     ImGui_ImplOpenGL3_Init("#version 460");
 
+    // Initial scene hierarchy
+    gameObjects.push_back("Baker House");
+    selectedGameObject = 0;
+
     return true;
 }
 
@@ -45,40 +49,9 @@ UpdateStatus ModuleEditor::Update()
 
     if (showConfigWindow) DrawConfigurationWindow();
     if (showConsoleWindow) DrawConsoleWindow();
+    if (showHierarchyWindow) DrawHierarchyWindow();
+    if (showInspectorWindow) DrawInspectorWindow();
     if (showAboutWindow) DrawAboutWindow();
-
-    // Placeholder Hierarchy
-    if (showHierarchyWindow) {
-        ImGui::Begin("Hierarchy", &showHierarchyWindow);
-        ImGui::Text("GameObject 1 (Baker House)");
-        ImGui::Text("GameObject 2 (Custom Model)");
-        ImGui::End();
-    }
-
-    // Placeholder Inspector
-    if (showInspectorWindow) {
-        ImGui::Begin("Inspector", &showInspectorWindow);
-        if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
-            static float pos[3] = { 0.0f, 0.0f, 0.0f };
-            static float rot[3] = { 0.0f, 0.0f, 0.0f };
-            static float scale[3] = { 1.0f, 1.0f, 1.0f };
-            ImGui::DragFloat3("Position", pos, 0.1f);
-            ImGui::DragFloat3("Rotation", rot, 1.0f);
-            ImGui::DragFloat3("Scale", scale, 0.1f);
-        }
-        if (ImGui::CollapsingHeader("Mesh")) {
-            ImGui::Text("Vertices: 0");
-            ImGui::Text("Indices: 0");
-            static bool showNormals = false;
-            ImGui::Checkbox("Show Normals", &showNormals);
-        }
-        if (ImGui::CollapsingHeader("Texture")) {
-            ImGui::Text("Path: None");
-            static bool checkerTexture = false;
-            ImGui::Checkbox("Checker Texture", &checkerTexture);
-        }
-        ImGui::End();
-    }
 
     // Keep track of FPS and MS
     float currentFps = ImGui::GetIO().Framerate;
@@ -144,6 +117,46 @@ void ModuleEditor::DrawMainMenuBar()
             }
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu("Create"))
+        {
+            if (ImGui::MenuItem("Cube"))
+            {
+                gameObjects.push_back("Cube " + std::to_string(gameObjects.size()));
+                selectedGameObject = static_cast<int>(gameObjects.size()) - 1;
+                LOG("Created basic geometry: Cube");
+            }
+            if (ImGui::MenuItem("Plane / Quad"))
+            {
+                gameObjects.push_back("Plane " + std::to_string(gameObjects.size()));
+                selectedGameObject = static_cast<int>(gameObjects.size()) - 1;
+                LOG("Created basic geometry: Plane / Quad");
+            }
+            if (ImGui::MenuItem("Sphere"))
+            {
+                gameObjects.push_back("Sphere " + std::to_string(gameObjects.size()));
+                selectedGameObject = static_cast<int>(gameObjects.size()) - 1;
+                LOG("Created basic geometry: Sphere");
+            }
+            if (ImGui::MenuItem("Cylinder"))
+            {
+                gameObjects.push_back("Cylinder " + std::to_string(gameObjects.size()));
+                selectedGameObject = static_cast<int>(gameObjects.size()) - 1;
+                LOG("Created basic geometry: Cylinder");
+            }
+            if (ImGui::MenuItem("Pyramid"))
+            {
+                gameObjects.push_back("Pyramid " + std::to_string(gameObjects.size()));
+                selectedGameObject = static_cast<int>(gameObjects.size()) - 1;
+                LOG("Created basic geometry: Pyramid");
+            }
+            if (ImGui::MenuItem("Triangle"))
+            {
+                gameObjects.push_back("Triangle " + std::to_string(gameObjects.size()));
+                selectedGameObject = static_cast<int>(gameObjects.size()) - 1;
+                LOG("Created basic geometry: Triangle");
+            }
+            ImGui::EndMenu();
+        }
         if (ImGui::BeginMenu("View"))
         {
             ImGui::MenuItem("Configuration", NULL, &showConfigWindow);
@@ -172,6 +185,80 @@ void ModuleEditor::DrawMainMenuBar()
         }
         ImGui::EndMainMenuBar();
     }
+}
+
+void ModuleEditor::DrawHierarchyWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(250, 400), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Hierarchy", &showHierarchyWindow))
+    {
+        ImGui::End();
+        return;
+    }
+
+    for (int i = 0; i < static_cast<int>(gameObjects.size()); ++i)
+    {
+        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+        if (i == selectedGameObject)
+            flags |= ImGuiTreeNodeFlags_Selected;
+
+        ImGui::TreeNodeEx(reinterpret_cast<void*>(static_cast<intptr_t>(i)), flags, "%s", gameObjects[i].c_str());
+        if (ImGui::IsItemClicked())
+        {
+            selectedGameObject = i;
+        }
+    }
+
+    ImGui::End();
+}
+
+void ModuleEditor::DrawInspectorWindow()
+{
+    ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Inspector", &showInspectorWindow))
+    {
+        ImGui::End();
+        return;
+    }
+
+    if (selectedGameObject >= 0 && selectedGameObject < static_cast<int>(gameObjects.size()))
+    {
+        ImGui::Text("Selected: %s", gameObjects[selectedGameObject].c_str());
+        ImGui::Separator();
+
+        if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            static float pos[3] = { 0.0f, 0.0f, 0.0f };
+            static float rot[3] = { 0.0f, 0.0f, 0.0f };
+            static float scale[3] = { 1.0f, 1.0f, 1.0f };
+            ImGui::DragFloat3("Position", pos, 0.1f);
+            ImGui::DragFloat3("Rotation", rot, 1.0f);
+            ImGui::DragFloat3("Scale", scale, 0.1f);
+        }
+
+        if (ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::Text("Mesh Type: %s", gameObjects[selectedGameObject].c_str());
+            static bool showNormalsPerFace = false;
+            static bool showNormalsPerTriangle = false;
+            ImGui::Checkbox("Show Normals (Per Face)", &showNormalsPerFace);
+            ImGui::Checkbox("Show Normals (Per Triangle)", &showNormalsPerTriangle);
+        }
+
+        if (ImGui::CollapsingHeader("Texture", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::Text("Texture Path: assets/Baker_house.png");
+            ImGui::Text("Size: 512 x 512");
+            static bool checkerTexture = false;
+            ImGui::Checkbox("Checker Texture (White & Black)", &checkerTexture);
+        }
+    }
+    else
+    {
+        ImGui::TextDisabled("No GameObject selected.");
+    }
+
+    ImGui::End();
 }
 
 void ModuleEditor::DrawConsoleWindow()

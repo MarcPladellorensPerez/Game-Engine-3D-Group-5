@@ -86,3 +86,5 @@ cmake-build-*/
 .DS_Store
 Thumbs.db
 Desktop.ini
+# ImGui settings
+imgui.ini
