@@ -16,6 +16,8 @@ file(GLOB_RECURSE HEADERS "Source/*.h")
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
+
 target_include_directories(${PROJECT_NAME} PRIVATE Source ${STB_INCLUDE_DIR})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3)
