@@ -1,6 +1,7 @@
 #include "ModuleRender.h"
 #include "Application.h"
 #include "ModuleWindow.h"
+#include "ModuleCamera.h"
 #include "Model.h"
 #include "Shader.h"
 #include <glm/gtc/matrix_transform.hpp>
@@ -234,6 +235,11 @@ bool ModuleRender::Init()
 
 UpdateStatus ModuleRender::PreUpdate()
 {
+    if (App && App->window)
+    {
+        glViewport(0, 0, App->window->GetWidth(), App->window->GetHeight());
+    }
+
     glClearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -261,17 +267,8 @@ UpdateStatus ModuleRender::Update()
         // Model -> World -> Camera -> Screen transformation matrices
         glm::mat4 model = GetModelMatrix();
 
-        glm::vec3 eye = glm::vec3(8.0f, 6.0f, 12.0f);
-        glm::vec3 center = glm::vec3(0.0f, 2.5f, 0.0f);
-        glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-        glm::mat4 view = glm::lookAt(eye, center, up);
-
-        float aspect = 1.333f;
-        if (App && App->window && App->window->GetHeight() > 0)
-        {
-            aspect = static_cast<float>(App->window->GetWidth()) / static_cast<float>(App->window->GetHeight());
-        }
-        glm::mat4 projection = glm::perspective(glm::radians(45.0f), aspect, 0.1f, 100.0f);
+        glm::mat4 view = (App && App->camera) ? App->camera->GetViewMatrix() : glm::mat4(1.0f);
+        glm::mat4 projection = (App && App->camera) ? App->camera->GetProjectionMatrix() : glm::mat4(1.0f);
 
         defaultShader->SetMat4("model", model);
         defaultShader->SetMat4("view", view);

@@ -13,8 +13,8 @@ public:
     bool CleanUp() override;
 
     SDL_Window* GetWindow() const { return window; }
-    int GetWidth() const { return width; }
-    int GetHeight() const { return height; }
+    int GetWidth() const;
+    int GetHeight() const;
 
     void SetFullscreen(bool enable);
     void SetResizable(bool enable);

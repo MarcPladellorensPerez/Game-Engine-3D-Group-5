@@ -37,6 +37,28 @@ bool ModuleWindow::CleanUp()
     return true;
 }
 
+int ModuleWindow::GetWidth() const
+{
+    if (window != nullptr)
+    {
+        int w = 0, h = 0;
+        SDL_GetWindowSizeInPixels(window, &w, &h);
+        if (w > 0) return w;
+    }
+    return width;
+}
+
+int ModuleWindow::GetHeight() const
+{
+    if (window != nullptr)
+    {
+        int w = 0, h = 0;
+        SDL_GetWindowSizeInPixels(window, &w, &h);
+        if (h > 0) return h;
+    }
+    return height;
+}
+
 void ModuleWindow::SetFullscreen(bool enable)
 {
     fullscreen = enable;

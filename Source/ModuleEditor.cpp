@@ -1,7 +1,9 @@
 #include "ModuleEditor.h"
 #include "Application.h"
 #include "ModuleWindow.h"
+#include "ModuleCamera.h"
 #include "ModuleRender.h"
+#include "Model.h"
 #include <SDL3/SDL.h>
 #include <glad/glad.h>
 #include <imgui.h>
@@ -29,8 +31,9 @@ bool ModuleEditor::Init()
     ImGui_ImplOpenGL3_Init("#version 460");
 
     // Initial scene hierarchy
+    gameObjects.push_back("Main Camera");
     gameObjects.push_back("Baker House");
-    selectedGameObject = 0;
+    selectedGameObject = 1;
 
     return true;
 }
@@ -214,7 +217,7 @@ void ModuleEditor::DrawHierarchyWindow()
 
 void ModuleEditor::DrawInspectorWindow()
 {
-    ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(300, 450), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Inspector", &showInspectorWindow))
     {
         ImGui::End();
@@ -223,34 +226,100 @@ void ModuleEditor::DrawInspectorWindow()
 
     if (selectedGameObject >= 0 && selectedGameObject < static_cast<int>(gameObjects.size()))
     {
-        ImGui::Text("Selected: %s", gameObjects[selectedGameObject].c_str());
+        const std::string& name = gameObjects[selectedGameObject];
+        ImGui::Text("Selected: %s", name.c_str());
         ImGui::Separator();
 
-        if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+        if (name == "Main Camera")
         {
-            static float pos[3] = { 0.0f, 0.0f, 0.0f };
-            static float rot[3] = { 0.0f, 0.0f, 0.0f };
-            static float scale[3] = { 1.0f, 1.0f, 1.0f };
-            ImGui::DragFloat3("Position", pos, 0.1f);
-            ImGui::DragFloat3("Rotation", rot, 1.0f);
-            ImGui::DragFloat3("Scale", scale, 0.1f);
-        }
+            if (App && App->camera)
+            {
+                if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    if (ImGui::DragFloat3("Position", &App->camera->Position[0], 0.1f))
+                    {
+                        App->camera->CalculateViewMatrix();
+                    }
+                    if (ImGui::DragFloat3("Reference", &App->camera->Reference[0], 0.1f))
+                    {
+                        App->camera->LookAt(App->camera->Reference);
+                    }
+                    ImGui::Text("Front: (%.2f, %.2f, %.2f)", App->camera->Front.x, App->camera->Front.y, App->camera->Front.z);
+                    ImGui::Text("Up:    (%.2f, %.2f, %.2f)", App->camera->Up.x, App->camera->Up.y, App->camera->Up.z);
+                    ImGui::Text("Right: (%.2f, %.2f, %.2f)", App->camera->Right.x, App->camera->Right.y, App->camera->Right.z);
+                    ImGui::Text("Yaw: %.1f deg | Pitch: %.1f deg", App->camera->GetYaw(), App->camera->GetPitch());
+                }
 
-        if (ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen))
-        {
-            ImGui::Text("Mesh Type: %s", gameObjects[selectedGameObject].c_str());
-            static bool showNormalsPerFace = false;
-            static bool showNormalsPerTriangle = false;
-            ImGui::Checkbox("Show Normals (Per Face)", &showNormalsPerFace);
-            ImGui::Checkbox("Show Normals (Per Triangle)", &showNormalsPerTriangle);
-        }
+                if (ImGui::CollapsingHeader("Camera Component", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    float fov = App->camera->GetFOV();
+                    if (ImGui::SliderFloat("Field of View", &fov, 10.0f, 120.0f, "%.1f deg"))
+                    {
+                        App->camera->SetFOV(fov);
+                    }
 
-        if (ImGui::CollapsingHeader("Texture", ImGuiTreeNodeFlags_DefaultOpen))
+                    float nearP = App->camera->GetNearPlane();
+                    float farP = App->camera->GetFarPlane();
+                    if (ImGui::DragFloat("Near Plane", &nearP, 0.05f, 0.01f, 10.0f))
+                    {
+                        App->camera->SetPlanes(nearP, farP);
+                    }
+                    if (ImGui::DragFloat("Far Plane", &farP, 1.0f, 10.0f, 5000.0f))
+                    {
+                        App->camera->SetPlanes(nearP, farP);
+                    }
+
+                    ImGui::DragFloat("Move Speed", &App->camera->speed, 0.2f, 0.1f, 50.0f);
+                    ImGui::DragFloat("Sensitivity", &App->camera->sensitivity, 0.01f, 0.01f, 2.0f);
+
+                    ImGui::Separator();
+                    if (ImGui::Button("Focus on Model (F)"))
+                    {
+                        App->camera->FocusOnModel();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Reset Camera"))
+                    {
+                        App->camera->Reset();
+                    }
+                }
+            }
+        }
+        else
         {
-            ImGui::Text("Texture Path: assets/Baker_house.png");
-            ImGui::Text("Size: 512 x 512");
-            static bool checkerTexture = false;
-            ImGui::Checkbox("Checker Texture (White & Black)", &checkerTexture);
+            if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                if (App && App->renderer)
+                {
+                    ImGui::DragFloat3("Position", &App->renderer->modelPosition[0], 0.1f);
+                    ImGui::DragFloat3("Rotation", &App->renderer->modelRotation[0], 1.0f);
+                    ImGui::DragFloat3("Scale", &App->renderer->modelScale[0], 0.05f, 0.001f, 100.0f);
+                }
+            }
+
+            if (ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::Text("Mesh Type: %s", name.c_str());
+                if (App && App->renderer && App->renderer->GetCurrentModel())
+                {
+                    ImGui::Text("Total Vertices: %zu", App->renderer->GetCurrentModel()->GetTotalVertices());
+                    ImGui::Text("Total Triangles: %zu", App->renderer->GetCurrentModel()->GetTotalIndices() / 3);
+                }
+                static bool showNormalsPerFace = false;
+                static bool showNormalsPerTriangle = false;
+                ImGui::Checkbox("Show Normals (Per Face)", &showNormalsPerFace);
+                ImGui::Checkbox("Show Normals (Per Triangle)", &showNormalsPerTriangle);
+            }
+
+            if (ImGui::CollapsingHeader("Texture", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::Text("Texture Path: assets/Baker_house.png");
+                ImGui::Text("Size: 512 x 512");
+                if (App && App->renderer)
+                {
+                    ImGui::Checkbox("Checker Texture (White & Black)", &App->renderer->showCheckerTexture);
+                }
+            }
         }
     }
     else
@@ -422,6 +491,61 @@ void ModuleEditor::DrawConfigurationWindow()
             ImGui::Checkbox("Cull Face", &App->renderer->cullFace);
 
             ImGui::ColorEdit4("Clear Color", App->renderer->clearColor);
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        if (App && App->camera)
+        {
+            if (ImGui::DragFloat3("Position", &App->camera->Position[0], 0.1f))
+            {
+                App->camera->CalculateViewMatrix();
+            }
+            if (ImGui::DragFloat3("Reference", &App->camera->Reference[0], 0.1f))
+            {
+                App->camera->LookAt(App->camera->Reference);
+            }
+
+            float fov = App->camera->GetFOV();
+            if (ImGui::SliderFloat("Field of View", &fov, 10.0f, 120.0f, "%.1f deg"))
+            {
+                App->camera->SetFOV(fov);
+            }
+
+            float nearP = App->camera->GetNearPlane();
+            float farP = App->camera->GetFarPlane();
+            if (ImGui::DragFloat("Near Plane", &nearP, 0.05f, 0.01f, 10.0f))
+            {
+                App->camera->SetPlanes(nearP, farP);
+            }
+            if (ImGui::DragFloat("Far Plane", &farP, 1.0f, 10.0f, 5000.0f))
+            {
+                App->camera->SetPlanes(nearP, farP);
+            }
+
+            ImGui::DragFloat("Speed", &App->camera->speed, 0.2f, 0.1f, 50.0f);
+            ImGui::DragFloat("Sensitivity", &App->camera->sensitivity, 0.01f, 0.01f, 2.0f);
+
+            ImGui::Separator();
+            if (ImGui::Button("Focus on Model (F)"))
+            {
+                App->camera->FocusOnModel();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Reset Camera"))
+            {
+                App->camera->Reset();
+            }
+
+            ImGui::Separator();
+            ImGui::TextDisabled("Controls Help:");
+            ImGui::BulletText("Hold RMB + WASD: Fly Camera (Shift = Sprint)");
+            ImGui::BulletText("Hold RMB + Q/E: Move Down / Up");
+            ImGui::BulletText("Alt + LMB Drag: Orbit around model/reference");
+            ImGui::BulletText("MMB Drag: Pan camera");
+            ImGui::BulletText("Mouse Wheel / Alt + RMB: Zoom in / out");
+            ImGui::BulletText("F: Focus camera on model");
         }
     }
 

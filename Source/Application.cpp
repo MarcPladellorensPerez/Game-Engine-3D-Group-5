@@ -1,5 +1,6 @@
 #include "Application.h"
 #include "ModuleWindow.h"
+#include "ModuleCamera.h"
 #include "ModuleRender.h"
 #include "ModuleEditor.h"
 #include <vector>
@@ -39,10 +40,12 @@ void Log(const char* format, ...)
 Application::Application()
 {
     window = new ModuleWindow();
+    camera = new ModuleCamera();
     renderer = new ModuleRender();
     editor = new ModuleEditor();
 
     modules.push_back(window);
+    modules.push_back(camera);
     modules.push_back(renderer);
     modules.push_back(editor);
 }
