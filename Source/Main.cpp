@@ -30,7 +30,29 @@ int main(int argc, char* argv[])
             {
                 if (e.drop.data && App && App->renderer)
                 {
-                    App->renderer->LoadModel(e.drop.data);
+                    std::string droppedPath = e.drop.data;
+                    size_t dotPos = droppedPath.find_last_of('.');
+                    std::string ext = "";
+                    if (dotPos != std::string::npos)
+                    {
+                        ext = droppedPath.substr(dotPos + 1);
+                        for (auto& c : ext) c = static_cast<char>(tolower(c));
+                    }
+
+                    if (ext == "fbx" || ext == "obj" || ext == "dae" || ext == "gltf" || ext == "glb")
+                    {
+                        LOG("[DRAG&DROP] 3D Model: %s", droppedPath.c_str());
+                        App->renderer->LoadModel(droppedPath);
+                    }
+                    else if (ext == "dds" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "tga" || ext == "bmp")
+                    {
+                        LOG("[DRAG&DROP] Texture: %s", droppedPath.c_str());
+                        App->renderer->ApplyTextureToSelected(droppedPath);
+                    }
+                    else
+                    {
+                        LOG("[DRAG&DROP] Unsupported file type: %s", droppedPath.c_str());
+                    }
                 }
             }
         }

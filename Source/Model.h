@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+class GameObject;
+
 class Model
 {
 public:
@@ -14,6 +16,8 @@ public:
 
     void Draw(unsigned int shaderProgram) const;
     void CleanUp();
+
+    static GameObject* LoadToGameObject(const std::string& path, GameObject* parent = nullptr);
 
     const std::vector<Mesh>& GetMeshes() const { return meshes; }
     const std::string& GetPath() const { return modelPath; }

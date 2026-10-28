@@ -82,7 +82,16 @@ void ModuleCamera::FocusOnModel()
     glm::vec3 target(0.0f, 2.0f, 0.0f);
     if (App && App->renderer)
     {
-        target = App->renderer->modelPosition + glm::vec3(0.0f, 2.0f, 0.0f);
+        GameObject* targetGO = App->renderer->GetSelectedGameObject();
+        if (!targetGO && !App->renderer->GetGameObjects().empty())
+        {
+            targetGO = App->renderer->GetGameObjects().front();
+        }
+
+        if (targetGO && targetGO->transform)
+        {
+            target = targetGO->transform->position + glm::vec3(0.0f, 2.0f, 0.0f);
+        }
     }
     Focus(target, 14.0f);
     LOG("Camera focused on model at (%.1f, %.1f, %.1f)", target.x, target.y, target.z);

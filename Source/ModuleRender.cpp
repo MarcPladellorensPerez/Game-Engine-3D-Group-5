@@ -63,66 +63,72 @@ void main()
 }
 )";
 
+#include "GameObject.h"
+
 ModuleRender::ModuleRender() {}
 ModuleRender::~ModuleRender() {}
 
-glm::mat4 ModuleRender::GetModelMatrix() const
+GameObject* ModuleRender::CreateGameObject(const std::string& name, GameObject* parent)
 {
-    glm::mat4 model = glm::mat4(1.0f);
-    model = glm::translate(model, modelPosition);
-    model = glm::rotate(model, glm::radians(modelRotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
-    model = glm::rotate(model, glm::radians(modelRotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
-    model = glm::rotate(model, glm::radians(modelRotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
-    model = glm::scale(model, modelScale);
-    return model;
+    GameObject* go = new GameObject(name, parent);
+    if (!parent)
+    {
+        gameObjects.push_back(go);
+    }
+    selectedGameObject = go;
+    return go;
 }
 
-void ModuleRender::CreateCheckerTexture()
+GameObject* ModuleRender::CreatePrimitive(const std::string& type)
 {
-    const int checkSize = 64;
-    unsigned char checkerImage[checkSize][checkSize][4];
-    for (int i = 0; i < checkSize; i++)
-    {
-        for (int j = 0; j < checkSize; j++)
-        {
-            int c = ((((i & 0x8) == 0) ^ ((j & 0x8) == 0))) * 255;
-            checkerImage[i][j][0] = (unsigned char)c;
-            checkerImage[i][j][1] = (unsigned char)c;
-            checkerImage[i][j][2] = (unsigned char)c;
-            checkerImage[i][j][3] = (unsigned char)255;
-        }
-    }
+    GameObject* go = new GameObject(type + " " + std::to_string(gameObjects.size() + 1));
+    if (type == "Cube") go->mesh->CreateCube();
+    else if (type == "Plane" || type == "Plane / Quad") go->mesh->CreatePlane();
+    else if (type == "Sphere") go->mesh->CreateSphere();
+    else if (type == "Cylinder") go->mesh->CreateCylinder();
+    else if (type == "Pyramid") go->mesh->CreatePyramid();
+    else if (type == "Triangle") go->mesh->CreateTriangle();
 
-    glGenTextures(1, &checkerTextureID);
-    glBindTexture(GL_TEXTURE_2D, checkerTextureID);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, checkSize, checkSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, checkerImage);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    gameObjects.push_back(go);
+    selectedGameObject = go;
+    LOG("Created basic geometry: %s", type.c_str());
+    return go;
 }
 
 bool ModuleRender::LoadModel(const std::string& path)
 {
-    Model* newModel = new Model(path);
-    if (!newModel->IsLoaded())
+    GameObject* newObj = Model::LoadToGameObject(path);
+    if (!newObj)
     {
-        delete newModel;
         return false;
     }
 
-    if (currentModel != nullptr)
-    {
-        delete currentModel;
-    }
-    currentModel = newModel;
-
-    modelPosition = glm::vec3(0.0f, 0.0f, 0.0f);
-    modelRotation = glm::vec3(0.0f, 0.0f, 0.0f);
-    modelScale = glm::vec3(1.0f, 1.0f, 1.0f);
+    gameObjects.push_back(newObj);
+    selectedGameObject = newObj;
 
     return true;
+}
+
+void ModuleRender::ApplyTextureToSelected(const std::string& texturePath)
+{
+    GameObject* target = selectedGameObject;
+    if (!target && !gameObjects.empty())
+    {
+        target = gameObjects.back();
+    }
+
+    if (!target)
+    {
+        LOG("[WARNING] Cannot apply texture: No GameObject in scene.");
+        return;
+    }
+
+    target->SetTexture(texturePath);
+    for (GameObject* child : target->GetChildren())
+    {
+        child->SetTexture(texturePath);
+    }
+    LOG("Applied texture '%s' to GameObject '%s'", texturePath.c_str(), target->GetName().c_str());
 }
 
 bool ModuleRender::Init()
@@ -152,85 +158,36 @@ bool ModuleRender::Init()
 
     CreateCheckerTexture();
 
-    // Fallback cube vertices (position, normal, UV)
-    float vertices[] = {
-        // Front face
-        -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,
-         0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 0.0f,
-         0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,
-         0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,
-        -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,
-
-        // Back face
-        -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,
-         0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f,
-         0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
-         0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,
-
-        // Left face
-        -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-
-        // Right face
-         0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-         0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-         0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-         0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-         0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-         0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-
-        // Top face
-        -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,
-         0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
-         0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,
-         0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,
-        -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,
-
-        // Bottom face
-        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f,
-         0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
-         0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,
-         0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f
-    };
-
-    // Setup VAO and VBO
-    glGenVertexArrays(1, &vao);
-    glGenBuffers(1, &vbo);
-
-    glBindVertexArray(vao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    // Attribute 0: Position
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    // Attribute 1: Normal
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    // Attribute 2: Texture Coords
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-    glEnableVertexAttribArray(2);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-
-    // Load initial 3D Model (Baker House)
+    // Baker_house loaded automatically at startup
     LoadModel("assets/BakerHouse.fbx");
 
     return true;
+}
+
+void ModuleRender::CreateCheckerTexture()
+{
+    const int checkSize = 64;
+    unsigned char checkerImage[checkSize][checkSize][4];
+    for (int i = 0; i < checkSize; i++)
+    {
+        for (int j = 0; j < checkSize; j++)
+        {
+            int c = ((((i & 0x8) == 0) ^ ((j & 0x8) == 0))) * 255;
+            checkerImage[i][j][0] = (unsigned char)c;
+            checkerImage[i][j][1] = (unsigned char)c;
+            checkerImage[i][j][2] = (unsigned char)c;
+            checkerImage[i][j][3] = (unsigned char)255;
+        }
+    }
+
+    glGenTextures(1, &checkerTextureID);
+    glBindTexture(GL_TEXTURE_2D, checkerTextureID);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, checkSize, checkSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, checkerImage);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 UpdateStatus ModuleRender::PreUpdate()
@@ -264,42 +221,21 @@ UpdateStatus ModuleRender::Update()
     {
         defaultShader->Use();
 
-        // Model -> World -> Camera -> Screen transformation matrices
-        glm::mat4 model = GetModelMatrix();
-
+        // Camera View & Projection transformation matrices
         glm::mat4 view = (App && App->camera) ? App->camera->GetViewMatrix() : glm::mat4(1.0f);
         glm::mat4 projection = (App && App->camera) ? App->camera->GetProjectionMatrix() : glm::mat4(1.0f);
 
-        defaultShader->SetMat4("model", model);
         defaultShader->SetMat4("view", view);
         defaultShader->SetMat4("projection", projection);
         defaultShader->SetBool("useLighting", useLighting);
 
-        if (showCheckerTexture)
+        // Render all GameObjects in scene
+        for (GameObject* go : gameObjects)
         {
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, checkerTextureID);
-            defaultShader->SetInt("texture_diffuse1", 0);
-            defaultShader->SetBool("useTexture", true);
-        }
-
-        if (currentModel != nullptr && currentModel->IsLoaded())
-        {
-            if (!showCheckerTexture)
+            if (go)
             {
-                defaultShader->SetBool("useTexture", true);
+                go->Draw(defaultShader->GetProgramID(), showCheckerTexture ? checkerTextureID : 0);
             }
-            currentModel->Draw(defaultShader->GetProgramID());
-        }
-        else
-        {
-            if (!showCheckerTexture)
-            {
-                defaultShader->SetBool("useTexture", false);
-            }
-            glBindVertexArray(vao);
-            glDrawArrays(GL_TRIANGLES, 0, 36);
-            glBindVertexArray(0);
         }
 
         defaultShader->Unuse();
@@ -317,27 +253,17 @@ bool ModuleRender::CleanUp()
 {
     LOG("Destroying 3D Renderer");
 
-    if (currentModel != nullptr)
+    for (GameObject* go : gameObjects)
     {
-        delete currentModel;
-        currentModel = nullptr;
+        if (go) delete go;
     }
+    gameObjects.clear();
+    selectedGameObject = nullptr;
 
     if (checkerTextureID != 0)
     {
         glDeleteTextures(1, &checkerTextureID);
         checkerTextureID = 0;
-    }
-
-    if (vao != 0)
-    {
-        glDeleteVertexArrays(1, &vao);
-        vao = 0;
-    }
-    if (vbo != 0)
-    {
-        glDeleteBuffers(1, &vbo);
-        vbo = 0;
     }
 
     if (defaultShader != nullptr)

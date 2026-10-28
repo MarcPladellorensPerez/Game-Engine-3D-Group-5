@@ -30,11 +30,6 @@ bool ModuleEditor::Init()
     ImGui_ImplSDL3_InitForOpenGL(App->window->GetWindow(), App->renderer->GetContext());
     ImGui_ImplOpenGL3_Init("#version 460");
 
-    // Initial scene hierarchy
-    gameObjects.push_back("Main Camera");
-    gameObjects.push_back("Baker House");
-    selectedGameObject = 1;
-
     return true;
 }
 
@@ -124,39 +119,27 @@ void ModuleEditor::DrawMainMenuBar()
         {
             if (ImGui::MenuItem("Cube"))
             {
-                gameObjects.push_back("Cube " + std::to_string(gameObjects.size()));
-                selectedGameObject = static_cast<int>(gameObjects.size()) - 1;
-                LOG("Created basic geometry: Cube");
+                if (App && App->renderer) App->renderer->CreatePrimitive("Cube");
             }
             if (ImGui::MenuItem("Plane / Quad"))
             {
-                gameObjects.push_back("Plane " + std::to_string(gameObjects.size()));
-                selectedGameObject = static_cast<int>(gameObjects.size()) - 1;
-                LOG("Created basic geometry: Plane / Quad");
+                if (App && App->renderer) App->renderer->CreatePrimitive("Plane");
             }
             if (ImGui::MenuItem("Sphere"))
             {
-                gameObjects.push_back("Sphere " + std::to_string(gameObjects.size()));
-                selectedGameObject = static_cast<int>(gameObjects.size()) - 1;
-                LOG("Created basic geometry: Sphere");
+                if (App && App->renderer) App->renderer->CreatePrimitive("Sphere");
             }
             if (ImGui::MenuItem("Cylinder"))
             {
-                gameObjects.push_back("Cylinder " + std::to_string(gameObjects.size()));
-                selectedGameObject = static_cast<int>(gameObjects.size()) - 1;
-                LOG("Created basic geometry: Cylinder");
+                if (App && App->renderer) App->renderer->CreatePrimitive("Cylinder");
             }
             if (ImGui::MenuItem("Pyramid"))
             {
-                gameObjects.push_back("Pyramid " + std::to_string(gameObjects.size()));
-                selectedGameObject = static_cast<int>(gameObjects.size()) - 1;
-                LOG("Created basic geometry: Pyramid");
+                if (App && App->renderer) App->renderer->CreatePrimitive("Pyramid");
             }
             if (ImGui::MenuItem("Triangle"))
             {
-                gameObjects.push_back("Triangle " + std::to_string(gameObjects.size()));
-                selectedGameObject = static_cast<int>(gameObjects.size()) - 1;
-                LOG("Created basic geometry: Triangle");
+                if (App && App->renderer) App->renderer->CreatePrimitive("Triangle");
             }
             ImGui::EndMenu();
         }
@@ -199,20 +182,46 @@ void ModuleEditor::DrawHierarchyWindow()
         return;
     }
 
-    for (int i = 0; i < static_cast<int>(gameObjects.size()); ++i)
+    if (App && App->renderer)
     {
-        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
-        if (i == selectedGameObject)
-            flags |= ImGuiTreeNodeFlags_Selected;
-
-        ImGui::TreeNodeEx(reinterpret_cast<void*>(static_cast<intptr_t>(i)), flags, "%s", gameObjects[i].c_str());
-        if (ImGui::IsItemClicked())
+        const auto& gos = App->renderer->GetGameObjects();
+        for (GameObject* go : gos)
         {
-            selectedGameObject = i;
+            DrawGameObjectNode(go);
         }
     }
 
     ImGui::End();
+}
+
+void ModuleEditor::DrawGameObjectNode(GameObject* go)
+{
+    if (!go) return;
+
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick;
+    if (App && App->renderer && go == App->renderer->GetSelectedGameObject())
+        flags |= ImGuiTreeNodeFlags_Selected;
+
+    if (go->GetChildren().empty())
+        flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+
+    bool nodeOpen = ImGui::TreeNodeEx(reinterpret_cast<void*>(go), flags, "%s", go->GetName().c_str());
+    if (ImGui::IsItemClicked())
+    {
+        if (App && App->renderer)
+        {
+            App->renderer->SetSelectedGameObject(go);
+        }
+    }
+
+    if (nodeOpen && !go->GetChildren().empty())
+    {
+        for (GameObject* child : go->GetChildren())
+        {
+            DrawGameObjectNode(child);
+        }
+        ImGui::TreePop();
+    }
 }
 
 void ModuleEditor::DrawInspectorWindow()
@@ -224,102 +233,54 @@ void ModuleEditor::DrawInspectorWindow()
         return;
     }
 
-    if (selectedGameObject >= 0 && selectedGameObject < static_cast<int>(gameObjects.size()))
+    GameObject* selected = (App && App->renderer) ? App->renderer->GetSelectedGameObject() : nullptr;
+
+    if (selected)
     {
-        const std::string& name = gameObjects[selectedGameObject];
-        ImGui::Text("Selected: %s", name.c_str());
+        char nameBuffer[128];
+        strncpy(nameBuffer, selected->GetName().c_str(), sizeof(nameBuffer) - 1);
+        nameBuffer[sizeof(nameBuffer) - 1] = '\0';
+        if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer)))
+        {
+            selected->SetName(nameBuffer);
+        }
+
+        bool active = selected->IsActive();
+        if (ImGui::Checkbox("Active", &active))
+        {
+            selected->SetActive(active);
+        }
+
         ImGui::Separator();
 
-        if (name == "Main Camera")
+        if (selected->transform && ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            if (App && App->camera)
-            {
-                if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    if (ImGui::DragFloat3("Position", &App->camera->Position[0], 0.1f))
-                    {
-                        App->camera->CalculateViewMatrix();
-                    }
-                    if (ImGui::DragFloat3("Reference", &App->camera->Reference[0], 0.1f))
-                    {
-                        App->camera->LookAt(App->camera->Reference);
-                    }
-                    ImGui::Text("Front: (%.2f, %.2f, %.2f)", App->camera->Front.x, App->camera->Front.y, App->camera->Front.z);
-                    ImGui::Text("Up:    (%.2f, %.2f, %.2f)", App->camera->Up.x, App->camera->Up.y, App->camera->Up.z);
-                    ImGui::Text("Right: (%.2f, %.2f, %.2f)", App->camera->Right.x, App->camera->Right.y, App->camera->Right.z);
-                    ImGui::Text("Yaw: %.1f deg | Pitch: %.1f deg", App->camera->GetYaw(), App->camera->GetPitch());
-                }
-
-                if (ImGui::CollapsingHeader("Camera Component", ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    float fov = App->camera->GetFOV();
-                    if (ImGui::SliderFloat("Field of View", &fov, 10.0f, 120.0f, "%.1f deg"))
-                    {
-                        App->camera->SetFOV(fov);
-                    }
-
-                    float nearP = App->camera->GetNearPlane();
-                    float farP = App->camera->GetFarPlane();
-                    if (ImGui::DragFloat("Near Plane", &nearP, 0.05f, 0.01f, 10.0f))
-                    {
-                        App->camera->SetPlanes(nearP, farP);
-                    }
-                    if (ImGui::DragFloat("Far Plane", &farP, 1.0f, 10.0f, 5000.0f))
-                    {
-                        App->camera->SetPlanes(nearP, farP);
-                    }
-
-                    ImGui::DragFloat("Move Speed", &App->camera->speed, 0.2f, 0.1f, 50.0f);
-                    ImGui::DragFloat("Sensitivity", &App->camera->sensitivity, 0.01f, 0.01f, 2.0f);
-
-                    ImGui::Separator();
-                    if (ImGui::Button("Focus on Model (F)"))
-                    {
-                        App->camera->FocusOnModel();
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button("Reset Camera"))
-                    {
-                        App->camera->Reset();
-                    }
-                }
-            }
+            ImGui::DragFloat3("Position", &selected->transform->position.x, 0.1f);
+            ImGui::DragFloat3("Rotation", &selected->transform->rotation.x, 1.0f);
+            ImGui::DragFloat3("Scale", &selected->transform->scale.x, 0.1f);
         }
-        else
+
+        if (selected->mesh && ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
-            {
-                if (App && App->renderer)
-                {
-                    ImGui::DragFloat3("Position", &App->renderer->modelPosition[0], 0.1f);
-                    ImGui::DragFloat3("Rotation", &App->renderer->modelRotation[0], 1.0f);
-                    ImGui::DragFloat3("Scale", &App->renderer->modelScale[0], 0.05f, 0.001f, 100.0f);
-                }
-            }
+            ImGui::Text("Mesh: %s", selected->mesh->meshName.c_str());
+            ImGui::Text("Vertices: %zu", selected->mesh->GetVertexCount());
+            ImGui::Text("Triangles: %zu", selected->mesh->GetTriangleCount());
+            ImGui::Text("Indices: %zu", selected->mesh->GetIndexCount());
 
-            if (ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen))
-            {
-                ImGui::Text("Mesh Type: %s", name.c_str());
-                if (App && App->renderer && App->renderer->GetCurrentModel())
-                {
-                    ImGui::Text("Total Vertices: %zu", App->renderer->GetCurrentModel()->GetTotalVertices());
-                    ImGui::Text("Total Triangles: %zu", App->renderer->GetCurrentModel()->GetTotalIndices() / 3);
-                }
-                static bool showNormalsPerFace = false;
-                static bool showNormalsPerTriangle = false;
-                ImGui::Checkbox("Show Normals (Per Face)", &showNormalsPerFace);
-                ImGui::Checkbox("Show Normals (Per Triangle)", &showNormalsPerTriangle);
-            }
+            ImGui::Checkbox("Show Normals (Per Face)", &selected->mesh->showNormalsPerFace);
+            ImGui::Checkbox("Show Normals (Per Vertex / Triangle)", &selected->mesh->showNormalsPerVertex);
+        }
 
-            if (ImGui::CollapsingHeader("Texture", ImGuiTreeNodeFlags_DefaultOpen))
-            {
-                ImGui::Text("Texture Path: assets/Baker_house.png");
-                ImGui::Text("Size: 512 x 512");
-                if (App && App->renderer)
-                {
-                    ImGui::Checkbox("Checker Texture (White & Black)", &App->renderer->showCheckerTexture);
-                }
-            }
+        if (selected->texture && ImGui::CollapsingHeader("Texture", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::Text("Texture Path: %s", selected->texture->GetPath().c_str());
+            ImGui::Text("Size: %d x %d (%d channels)",
+                        selected->texture->GetWidth(),
+                        selected->texture->GetHeight(),
+                        selected->texture->GetChannels());
+            ImGui::Text("Texture ID: %u", selected->texture->GetTextureID());
+
+            ImGui::Checkbox("Checker Texture (White & Black)", &selected->texture->showChecker);
         }
     }
     else

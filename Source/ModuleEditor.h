@@ -34,8 +34,7 @@ private:
     bool showInspectorWindow = true;
 
     // Hierarchy & Inspector
-    std::vector<std::string> gameObjects;
-    int selectedGameObject = 0;
+    void DrawGameObjectNode(class GameObject* go);
 
     // Configuration / Performance stats
     std::vector<float> fpsLog;

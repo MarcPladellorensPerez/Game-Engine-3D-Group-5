@@ -1,9 +1,11 @@
 #pragma once
 #include "Module.h"
+#include "GameObject.h"
 #include <SDL3/SDL.h>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <string>
+#include <vector>
 
 class Shader;
 class Model;
@@ -21,12 +23,18 @@ public:
     bool CleanUp() override;
 
     bool LoadModel(const std::string& path);
-    Model* GetCurrentModel() const { return currentModel; }
+    void ApplyTextureToSelected(const std::string& texturePath);
+    GameObject* CreatePrimitive(const std::string& type);
+    GameObject* CreateGameObject(const std::string& name = "GameObject", GameObject* parent = nullptr);
+
+    const std::vector<GameObject*>& GetGameObjects() const { return gameObjects; }
+    GameObject* GetSelectedGameObject() const { return selectedGameObject; }
+    void SetSelectedGameObject(GameObject* go) { selectedGameObject = go; }
 
 public:
     SDL_GLContext GetContext() const { return context; }
     Shader* GetDefaultShader() const { return defaultShader; }
-    glm::mat4 GetModelMatrix() const;
+    unsigned int GetCheckerTextureID() const { return checkerTextureID; }
 
     float clearColor[4] = { 0.1f, 0.25f, 0.5f, 1.0f };
     bool wireframe = false;
@@ -36,19 +44,13 @@ public:
     bool showCheckerTexture = false;
     bool useLighting = true;
 
-    // Transform for 3D model
-    glm::vec3 modelPosition = glm::vec3(0.0f, 0.0f, 0.0f);
-    glm::vec3 modelRotation = glm::vec3(0.0f, 0.0f, 0.0f);
-    glm::vec3 modelScale = glm::vec3(1.0f, 1.0f, 1.0f);
-
 private:
     void CreateCheckerTexture();
 
 private:
     SDL_GLContext context = nullptr;
-    GLuint vao = 0;
-    GLuint vbo = 0;
     GLuint checkerTextureID = 0;
     Shader* defaultShader = nullptr;
-    Model* currentModel = nullptr;
+    std::vector<GameObject*> gameObjects;
+    GameObject* selectedGameObject = nullptr;
 };
