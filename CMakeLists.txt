@@ -4,6 +4,10 @@ project(MotorVJ CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 
+if (MSVC)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+endif()
+
 find_package(SDL3 CONFIG REQUIRED)
 find_package(glad CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
@@ -25,6 +29,9 @@ file(GLOB_RECURSE HEADERS "Source/*.h")
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+)
 
 target_include_directories(${PROJECT_NAME} PRIVATE Source ${STB_INCLUDE_DIR})
 if (DEFINED IL_INCLUDE_DIR)
@@ -63,6 +70,9 @@ if (JASPER_LIBRARY)
 endif()
 if (LCMS2_LIBRARY)
     target_link_libraries(${PROJECT_NAME} PRIVATE ${LCMS2_LIBRARY})
+endif()
+if (WIN32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE psapi)
 endif()
 
 # Copy assets to executable directory

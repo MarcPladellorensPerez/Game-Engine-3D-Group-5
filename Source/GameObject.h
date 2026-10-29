@@ -17,7 +17,12 @@ public:
     void CleanUp();
 
     Component* CreateComponent(ComponentType type);
-    template<typename T> T* GetComponent();
+    Component* GetComponent(ComponentType type) const;
+    template<typename T>
+    T* GetComponent(ComponentType type) const
+    {
+        return static_cast<T*>(GetComponent(type));
+    }
 
     void AddChild(GameObject* child);
     void RemoveChild(GameObject* child);
@@ -36,7 +41,6 @@ public:
     const std::vector<GameObject*>& GetChildren() const { return children; }
     const std::vector<Component*>& GetComponents() const { return components; }
 
-    // Every GameObject is guaranteed to have at least these 3 components
     ComponentTransform* transform = nullptr;
     ComponentMesh* mesh = nullptr;
     ComponentTexture* texture = nullptr;
@@ -48,14 +52,3 @@ private:
     std::vector<GameObject*> children;
     std::vector<Component*> components;
 };
-
-template<typename T>
-T* GameObject::GetComponent()
-{
-    for (Component* comp : components)
-    {
-        T* casted = dynamic_cast<T*>(comp);
-        if (casted) return casted;
-    }
-    return nullptr;
-}

@@ -25,9 +25,8 @@ public:
     bool showNormalsPerFace = false;
     bool showNormalsPerVertex = false;
 
-    // Basic procedural geometries
     void CreateCube(float size = 1.0f);
-    void CreatePlane(float width = 2.0f, float height = 2.0f);
+    void CreatePlane(float size = 2.0f);
     void CreateSphere(float radius = 1.0f, unsigned int rings = 16, unsigned int sectors = 16);
     void CreateCylinder(float radius = 0.5f, float height = 2.0f, unsigned int sectors = 16);
     void CreatePyramid(float baseSize = 1.0f, float height = 1.5f);
@@ -41,7 +40,6 @@ private:
 
     unsigned int VAO = 0, VBO = 0, EBO = 0;
 
-    // Normal visualization buffers
     unsigned int vertexNormalsVAO = 0, vertexNormalsVBO = 0;
     size_t vertexNormalsCount = 0;
 

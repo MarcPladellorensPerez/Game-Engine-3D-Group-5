@@ -4,6 +4,7 @@
 #include "ComponentMesh.h"
 #include <glad/glad.h>
 #include <cmath>
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -61,15 +62,12 @@ void ComponentMesh::InitBuffers(const std::vector<Vertex>& verts, const std::vec
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
     }
 
-    // Vertex positions
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Position));
 
-    // Vertex normals
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
 
-    // Vertex UV coords
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
 
@@ -84,7 +82,7 @@ void ComponentMesh::GenerateNormalsBuffers()
 
     const float normalLength = 0.2f;
 
-    // 1. Vertex Normals (Cyan lines)
+    // Normales por vertice
     std::vector<glm::vec3> vertNormalLines;
     vertNormalLines.reserve(vertices.size() * 2);
     for (const auto& v : vertices)
@@ -109,7 +107,7 @@ void ComponentMesh::GenerateNormalsBuffers()
         vertexNormalsCount = vertNormalLines.size();
     }
 
-    // 2. Face Normals (Yellow lines)
+    // Normales por cara
     std::vector<glm::vec3> faceNormalLines;
     size_t numTriangles = indices.empty() ? (vertices.size() / 3) : (indices.size() / 3);
     faceNormalLines.reserve(numTriangles * 2);
@@ -181,63 +179,68 @@ void ComponentMesh::DrawNormals(unsigned int shaderProgram, const glm::mat4& mod
 {
     if (!showNormalsPerVertex && !showNormalsPerFace) return;
 
-    // Use shader in flat color unlit mode
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, &modelMatrix[0][0]);
-    glUniform1i(glGetUniformLocation(shaderProgram, "useTexture"), 0);
-    glUniform1i(glGetUniformLocation(shaderProgram, "useLighting"), 0);
+    GLint useTextureLoc = glGetUniformLocation(shaderProgram, "useTexture");
+    GLint useLightingLoc = glGetUniformLocation(shaderProgram, "useLighting");
+    GLint objColorLoc = glGetUniformLocation(shaderProgram, "objectColor");
 
-    // Draw Vertex Normals in Cyan
+    if (useTextureLoc != -1) glUniform1i(useTextureLoc, 0);
+    if (useLightingLoc != -1) glUniform1i(useLightingLoc, 0);
+
+    // Normales por vertice (Cyan)
     if (showNormalsPerVertex && vertexNormalsVAO != 0 && vertexNormalsCount > 0)
     {
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 1.0f, 1.0f);
+        if (objColorLoc != -1) glUniform3f(objColorLoc, 0.0f, 1.0f, 1.0f);
         glBindVertexArray(vertexNormalsVAO);
         glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(vertexNormalsCount));
         glBindVertexArray(0);
     }
 
-    // Draw Face Normals in Yellow
+    // Normales por cara (Amarillo)
     if (showNormalsPerFace && faceNormalsVAO != 0 && faceNormalsCount > 0)
     {
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 1.0f, 1.0f, 0.0f);
+        if (objColorLoc != -1) glUniform3f(objColorLoc, 1.0f, 1.0f, 0.0f);
         glBindVertexArray(faceNormalsVAO);
         glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(faceNormalsCount));
         glBindVertexArray(0);
     }
 }
 
-// Procedural primitives
 void ComponentMesh::CreateCube(float size)
 {
-    float half = size * 0.5f;
     meshName = "Cube";
-
+    float half = size * 0.5f;
     std::vector<Vertex> verts = {
-        // Front face (+Z)
+        // Front
         { {-half, -half,  half}, { 0.0f,  0.0f,  1.0f}, {0.0f, 0.0f} },
         { { half, -half,  half}, { 0.0f,  0.0f,  1.0f}, {1.0f, 0.0f} },
         { { half,  half,  half}, { 0.0f,  0.0f,  1.0f}, {1.0f, 1.0f} },
         { {-half,  half,  half}, { 0.0f,  0.0f,  1.0f}, {0.0f, 1.0f} },
-        // Back face (-Z)
+
+        // Back
         { { half, -half, -half}, { 0.0f,  0.0f, -1.0f}, {0.0f, 0.0f} },
         { {-half, -half, -half}, { 0.0f,  0.0f, -1.0f}, {1.0f, 0.0f} },
         { {-half,  half, -half}, { 0.0f,  0.0f, -1.0f}, {1.0f, 1.0f} },
         { { half,  half, -half}, { 0.0f,  0.0f, -1.0f}, {0.0f, 1.0f} },
-        // Left face (-X)
+
+        // Left
         { {-half, -half, -half}, {-1.0f,  0.0f,  0.0f}, {0.0f, 0.0f} },
         { {-half, -half,  half}, {-1.0f,  0.0f,  0.0f}, {1.0f, 0.0f} },
         { {-half,  half,  half}, {-1.0f,  0.0f,  0.0f}, {1.0f, 1.0f} },
         { {-half,  half, -half}, {-1.0f,  0.0f,  0.0f}, {0.0f, 1.0f} },
-        // Right face (+X)
+
+        // Right
         { { half, -half,  half}, { 1.0f,  0.0f,  0.0f}, {0.0f, 0.0f} },
         { { half, -half, -half}, { 1.0f,  0.0f,  0.0f}, {1.0f, 0.0f} },
         { { half,  half, -half}, { 1.0f,  0.0f,  0.0f}, {1.0f, 1.0f} },
         { { half,  half,  half}, { 1.0f,  0.0f,  0.0f}, {0.0f, 1.0f} },
-        // Top face (+Y)
+
+        // Top
         { {-half,  half,  half}, { 0.0f,  1.0f,  0.0f}, {0.0f, 0.0f} },
         { { half,  half,  half}, { 0.0f,  1.0f,  0.0f}, {1.0f, 0.0f} },
         { { half,  half, -half}, { 0.0f,  1.0f,  0.0f}, {1.0f, 1.0f} },
         { {-half,  half, -half}, { 0.0f,  1.0f,  0.0f}, {0.0f, 1.0f} },
-        // Bottom face (-Y)
+
+        // Bottom
         { {-half, -half, -half}, { 0.0f, -1.0f,  0.0f}, {0.0f, 0.0f} },
         { { half, -half, -half}, { 0.0f, -1.0f,  0.0f}, {1.0f, 0.0f} },
         { { half, -half,  half}, { 0.0f, -1.0f,  0.0f}, {1.0f, 1.0f} },
@@ -245,34 +248,29 @@ void ComponentMesh::CreateCube(float size)
     };
 
     std::vector<unsigned int> inds = {
-        0, 1, 2,  0, 2, 3,        // Front
-        4, 5, 6,  4, 6, 7,        // Back
-        8, 9, 10, 8, 10, 11,      // Left
-        12, 13, 14, 12, 14, 15,   // Right
-        16, 17, 18, 16, 18, 19,   // Top
-        20, 21, 22, 20, 22, 23    // Bottom
+        0, 1, 2,  0, 2, 3,
+        4, 5, 6,  4, 6, 7,
+        8, 9, 10, 8, 10, 11,
+        12, 13, 14, 12, 14, 15,
+        16, 17, 18, 16, 18, 19,
+        20, 21, 22, 20, 22, 23
     };
 
     InitBuffers(verts, inds);
 }
 
-void ComponentMesh::CreatePlane(float width, float height)
+void ComponentMesh::CreatePlane(float size)
 {
-    float halfW = width * 0.5f;
-    float halfH = height * 0.5f;
     meshName = "Plane";
-
+    float half = size * 0.5f;
     std::vector<Vertex> verts = {
-        { {-halfW, 0.0f, -halfH}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f} },
-        { { halfW, 0.0f, -halfH}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f} },
-        { { halfW, 0.0f,  halfH}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f} },
-        { {-halfW, 0.0f,  halfH}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f} },
+        { {-half, 0.0f,  half}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f} },
+        { { half, 0.0f,  half}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f} },
+        { { half, 0.0f, -half}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f} },
+        { {-half, 0.0f, -half}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f} }
     };
 
-    std::vector<unsigned int> inds = {
-        0, 1, 2,  0, 2, 3
-    };
-
+    std::vector<unsigned int> inds = { 0, 1, 2, 0, 2, 3 };
     InitBuffers(verts, inds);
 }
 
@@ -329,17 +327,14 @@ void ComponentMesh::CreateCylinder(float radius, float height, unsigned int sect
 
     float halfH = height * 0.5f;
 
-    // Side vertices
     for (unsigned int i = 0; i <= sectors; ++i)
     {
-        float theta = (float)i / (float)sectors * 2.0f * (float)M_PI;
+        float theta = static_cast<float>(i) / static_cast<float>(sectors) * 2.0f * static_cast<float>(M_PI);
         float x = cos(theta);
         float z = sin(theta);
         float u = (float)i / (float)sectors;
 
-        // Top
         verts.push_back({ {x * radius, halfH, z * radius}, {x, 0.0f, z}, {u, 1.0f} });
-        // Bottom
         verts.push_back({ {x * radius, -halfH, z * radius}, {x, 0.0f, z}, {u, 0.0f} });
     }
 
@@ -368,39 +363,39 @@ void ComponentMesh::CreatePyramid(float baseSize, float height)
     float half = baseSize * 0.5f;
 
     std::vector<Vertex> verts = {
+        // Base
+        { {-half, 0.0f,  half}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f} },
+        { { half, 0.0f,  half}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f} },
+        { { half, 0.0f, -half}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f} },
+        { {-half, 0.0f, -half}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f} },
+
         // Front
-        { { 0.0f, height,  0.0f}, { 0.0f, 0.5f,  1.0f}, {0.5f, 1.0f} },
-        { {-half,   0.0f,  half}, { 0.0f, 0.5f,  1.0f}, {0.0f, 0.0f} },
-        { { half,   0.0f,  half}, { 0.0f, 0.5f,  1.0f}, {1.0f, 0.0f} },
+        { {-half, 0.0f,  half}, {0.0f, 0.5f, 0.5f}, {0.0f, 0.0f} },
+        { { half, 0.0f,  half}, {0.0f, 0.5f, 0.5f}, {1.0f, 0.0f} },
+        { { 0.0f, height, 0.0f}, {0.0f, 0.5f, 0.5f}, {0.5f, 1.0f} },
 
         // Right
-        { { 0.0f, height,  0.0f}, { 1.0f, 0.5f,  0.0f}, {0.5f, 1.0f} },
-        { { half,   0.0f,  half}, { 1.0f, 0.5f,  0.0f}, {0.0f, 0.0f} },
-        { { half,   0.0f, -half}, { 1.0f, 0.5f,  0.0f}, {1.0f, 0.0f} },
+        { { half, 0.0f,  half}, {0.5f, 0.5f, 0.0f}, {0.0f, 0.0f} },
+        { { half, 0.0f, -half}, {0.5f, 0.5f, 0.0f}, {1.0f, 0.0f} },
+        { { 0.0f, height, 0.0f}, {0.5f, 0.5f, 0.0f}, {0.5f, 1.0f} },
 
         // Back
-        { { 0.0f, height,  0.0f}, { 0.0f, 0.5f, -1.0f}, {0.5f, 1.0f} },
-        { { half,   0.0f, -half}, { 0.0f, 0.5f, -1.0f}, {0.0f, 0.0f} },
-        { {-half,   0.0f, -half}, { 0.0f, 0.5f, -1.0f}, {1.0f, 0.0f} },
+        { { half, 0.0f, -half}, {0.0f, 0.5f, -0.5f}, {0.0f, 0.0f} },
+        { {-half, 0.0f, -half}, {0.0f, 0.5f, -0.5f}, {1.0f, 0.0f} },
+        { { 0.0f, height, 0.0f}, {0.0f, 0.5f, -0.5f}, {0.5f, 1.0f} },
 
         // Left
-        { { 0.0f, height,  0.0f}, {-1.0f, 0.5f,  0.0f}, {0.5f, 1.0f} },
-        { {-half,   0.0f, -half}, {-1.0f, 0.5f,  0.0f}, {0.0f, 0.0f} },
-        { {-half,   0.0f,  half}, {-1.0f, 0.5f,  0.0f}, {1.0f, 0.0f} },
-
-        // Base (2 triangles)
-        { {-half,   0.0f, -half}, { 0.0f, -1.0f, 0.0f}, {0.0f, 0.0f} },
-        { { half,   0.0f, -half}, { 0.0f, -1.0f, 0.0f}, {1.0f, 0.0f} },
-        { { half,   0.0f,  half}, { 0.0f, -1.0f, 0.0f}, {1.0f, 1.0f} },
-        { {-half,   0.0f,  half}, { 0.0f, -1.0f, 0.0f}, {0.0f, 1.0f} }
+        { {-half, 0.0f, -half}, {-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f} },
+        { {-half, 0.0f,  half}, {-0.5f, 0.5f, 0.0f}, {1.0f, 0.0f} },
+        { { 0.0f, height, 0.0f}, {-0.5f, 0.5f, 0.0f}, {0.5f, 1.0f} },
     };
 
     std::vector<unsigned int> inds = {
-        0, 1, 2,      // Front
-        3, 4, 5,      // Right
-        6, 7, 8,      // Back
-        9, 10, 11,    // Left
-        12, 13, 14, 12, 14, 15 // Base
+        0, 2, 1, 0, 3, 2,
+        4, 5, 6,
+        7, 8, 9,
+        10, 11, 12,
+        13, 14, 15
     };
 
     InitBuffers(verts, inds);
@@ -410,14 +405,11 @@ void ComponentMesh::CreateTriangle(float size)
 {
     meshName = "Triangle";
     float half = size * 0.5f;
-
     std::vector<Vertex> verts = {
-        { { 0.0f,  half, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.5f, 1.0f} },
         { {-half, -half, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f} },
-        { { half, -half, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f} }
+        { { half, -half, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f} },
+        { { 0.0f,  half, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.5f, 1.0f} }
     };
-
     std::vector<unsigned int> inds = { 0, 1, 2 };
-
     InitBuffers(verts, inds);
 }

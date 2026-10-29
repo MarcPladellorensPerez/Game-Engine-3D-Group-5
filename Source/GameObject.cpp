@@ -5,7 +5,6 @@
 GameObject::GameObject(const std::string& name, GameObject* parent)
     : name(name), parent(parent), active(true)
 {
-    // Guarantee the 3 required components: Transform, Mesh, Texture
     transform = new ComponentTransform(this);
     components.push_back(transform);
 
@@ -60,8 +59,8 @@ void GameObject::RemoveChild(GameObject* child)
     auto it = std::find(children.begin(), children.end(), child);
     if (it != children.end())
     {
+        (*it)->SetParent(nullptr);
         children.erase(it);
-        child->SetParent(nullptr);
     }
 }
 
@@ -98,6 +97,18 @@ Component* GameObject::CreateComponent(ComponentType type)
         components.push_back(newComp);
     }
     return newComp;
+}
+
+Component* GameObject::GetComponent(ComponentType type) const
+{
+    for (Component* comp : components)
+    {
+        if (comp && comp->GetType() == type)
+        {
+            return comp;
+        }
+    }
+    return nullptr;
 }
 
 void GameObject::SetTexture(const std::string& texturePath)
@@ -156,12 +167,9 @@ void GameObject::Draw(unsigned int shaderProgram, unsigned int checkerTextureID)
         glUniform1i(glGetUniformLocation(shaderProgram, "useTexture"), useTexture ? 1 : 0);
 
         mesh->Draw(shaderProgram);
-
-        // Draw normals visualization if enabled
         mesh->DrawNormals(shaderProgram, modelMatrix);
     }
 
-    // Draw children recursively
     for (GameObject* child : children)
     {
         if (child)

@@ -1,4 +1,3 @@
-#define _CRT_SECURE_NO_WARNINGS
 #include "ComponentTexture.h"
 #include "Globals.h"
 #include <glad/glad.h>
@@ -57,7 +56,6 @@ bool ComponentTexture::LoadTexture(const std::string& filepath)
 
     std::string finalPath = filepath;
 
-    // Check if file exists, or check fallback in assets/
     FILE* f = fopen(finalPath.c_str(), "rb");
     if (!f)
     {
@@ -68,11 +66,7 @@ bool ComponentTexture::LoadTexture(const std::string& filepath)
     }
     if (f) fclose(f);
 
-    bool loaded = false;
-    unsigned char* data = nullptr;
-    int w = 0, h = 0, comp = 0;
-
-    // 1. Try loading with DevIL (Supports DDS, PNG, JPG, TGA, BMP, etc.)
+    // Carga de textura mediante DevIL (soporta DDS, PNG, TGA, JPG, etc.)
     ILuint imgId = 0;
     ilGenImages(1, &imgId);
     ilBindImage(imgId);
@@ -80,10 +74,10 @@ bool ComponentTexture::LoadTexture(const std::string& filepath)
     if (ilLoadImage(finalPath.c_str()))
     {
         ilConvertImage(IL_RGBA, IL_UNSIGNED_BYTE);
-        w = ilGetInteger(IL_IMAGE_WIDTH);
-        h = ilGetInteger(IL_IMAGE_HEIGHT);
-        comp = 4;
-        data = ilGetData();
+        int w = ilGetInteger(IL_IMAGE_WIDTH);
+        int h = ilGetInteger(IL_IMAGE_HEIGHT);
+        int comp = 4;
+        unsigned char* data = ilGetData();
 
         glGenTextures(1, &textureID);
         glBindTexture(GL_TEXTURE_2D, textureID);
@@ -103,7 +97,6 @@ bool ComponentTexture::LoadTexture(const std::string& filepath)
         channels = comp;
         path = finalPath;
         ownsTexture = true;
-        loaded = true;
 
         LOG("[DevIL] Loaded texture successfully: %s (%dx%d, %d channels)", finalPath.c_str(), width, height, channels);
         return true;
@@ -113,9 +106,10 @@ bool ComponentTexture::LoadTexture(const std::string& filepath)
         ilDeleteImages(1, &imgId);
     }
 
-    // 2. Fallback to STB Image if DevIL could not load the specific file
+    // Fallback con stb_image si el formato no es reconocido por DevIL
     stbi_set_flip_vertically_on_load(false);
-    data = stbi_load(finalPath.c_str(), &w, &h, &comp, 4);
+    int w = 0, h = 0, comp = 0;
+    unsigned char* data = stbi_load(finalPath.c_str(), &w, &h, &comp, 4);
     if (data)
     {
         glGenTextures(1, &textureID);
@@ -137,7 +131,7 @@ bool ComponentTexture::LoadTexture(const std::string& filepath)
         path = finalPath;
         ownsTexture = true;
 
-        LOG("[STB] Loaded texture successfully: %s (%dx%d)", finalPath.c_str(), width, height);
+        LOG("[STB] Loaded texture: %s (%dx%d)", finalPath.c_str(), width, height);
         return true;
     }
 

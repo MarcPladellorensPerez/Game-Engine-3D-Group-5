@@ -11,6 +11,11 @@
 #include <imgui_impl_opengl3.h>
 #include <cstdio>
 #include <cstdarg>
+#include <IL/il.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <psapi.h>
+#endif
 
 ModuleEditor::ModuleEditor() {}
 ModuleEditor::~ModuleEditor() {}
@@ -518,7 +523,16 @@ void ModuleEditor::DrawConfigurationWindow()
 
         ImGui::Text("CPUs: %d Cores", SDL_GetNumLogicalCPUCores());
         ImGui::Text("CPU Cache Line: %d bytes", SDL_GetCPUCacheLineSize());
+        ILint devilVer = ilGetInteger(IL_VERSION_NUM);
+        ImGui::Text("DevIL Version: %d", devilVer);
         ImGui::Text("System RAM: %d MB", SDL_GetSystemRAM());
+#ifdef _WIN32
+        PROCESS_MEMORY_COUNTERS pmc;
+        if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
+        {
+            ImGui::Text("Process RAM: %.2f MB", pmc.WorkingSetSize / (1024.0f * 1024.0f));
+        }
+#endif
         ImGui::Separator();
 
         const char* glVendor = (const char*)glGetString(GL_VENDOR);
@@ -560,7 +574,7 @@ void ModuleEditor::DrawAboutWindow()
     ImGui::BulletText("Dear ImGui %s", IMGUI_VERSION);
     ImGui::BulletText("Assimp (Open Asset Import Library)");
     ImGui::BulletText("GLM (OpenGL Mathematics)");
-    ImGui::BulletText("stb_image");
+    ImGui::BulletText("DevIL (Developer's Image Library)");
     ImGui::Separator();
 
     ImGui::Text("Licencia:");
