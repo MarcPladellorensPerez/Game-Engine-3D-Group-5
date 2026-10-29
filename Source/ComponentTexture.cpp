@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include "ComponentTexture.h"
 #include "Globals.h"
 #include <glad/glad.h>

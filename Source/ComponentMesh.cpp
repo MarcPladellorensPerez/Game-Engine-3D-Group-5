@@ -1,6 +1,15 @@
+#ifndef _USE_MATH_DEFINES
+#define _USE_MATH_DEFINES
+#endif
 #include "ComponentMesh.h"
 #include <glad/glad.h>
 #include <cmath>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+#ifndef M_PI_2
+#define M_PI_2 1.57079632679489661923
+#endif
 
 ComponentMesh::ComponentMesh(GameObject* owner)
     : Component(owner, ComponentType::MESH)
@@ -280,9 +289,9 @@ void ComponentMesh::CreateSphere(float radius, unsigned int rings, unsigned int 
     {
         for (unsigned int s = 0; s < sectors; ++s)
         {
-            float const y = sin(-M_PI_2 + M_PI * r * R);
-            float const x = cos(2.0f * M_PI * s * S) * sin(M_PI * r * R);
-            float const z = sin(2.0f * M_PI * s * S) * sin(M_PI * r * R);
+            float const y = static_cast<float>(sin(-M_PI_2 + M_PI * r * R));
+            float const x = static_cast<float>(cos(2.0f * M_PI * s * S) * sin(M_PI * r * R));
+            float const z = static_cast<float>(sin(2.0f * M_PI * s * S) * sin(M_PI * r * R));
 
             Vertex v;
             v.Position = glm::vec3(x * radius, y * radius, z * radius);
@@ -323,7 +332,7 @@ void ComponentMesh::CreateCylinder(float radius, float height, unsigned int sect
     // Side vertices
     for (unsigned int i = 0; i <= sectors; ++i)
     {
-        float theta = (float)i / (float)sectors * 2.0f * M_PI;
+        float theta = (float)i / (float)sectors * 2.0f * (float)M_PI;
         float x = cos(theta);
         float z = sin(theta);
         float u = (float)i / (float)sectors;
