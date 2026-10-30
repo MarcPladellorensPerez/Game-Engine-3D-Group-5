@@ -17,15 +17,14 @@ public:
     void CleanUp();
 
     Component* CreateComponent(ComponentType type);
-    Component* GetComponent(ComponentType type) const;
-    template<typename T>
-    T* GetComponent(ComponentType type) const
-    {
-        return static_cast<T*>(GetComponent(type));
-    }
+    template<typename T> T* GetComponent();
 
     void AddChild(GameObject* child);
     void RemoveChild(GameObject* child);
+    void InsertChild(int index, GameObject* child);
+    int GetChildIndex(GameObject* child) const;
+
+    GameObject* Clone(GameObject* newParent = nullptr, bool appendCopySuffix = true);
 
     void SetTexture(const std::string& texturePath);
 
@@ -52,3 +51,14 @@ private:
     std::vector<GameObject*> children;
     std::vector<Component*> components;
 };
+
+template<typename T>
+T* GameObject::GetComponent()
+{
+    for (Component* comp : components)
+    {
+        T* casted = dynamic_cast<T*>(comp);
+        if (casted) return casted;
+    }
+    return nullptr;
+}

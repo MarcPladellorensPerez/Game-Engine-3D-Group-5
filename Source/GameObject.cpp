@@ -22,6 +22,11 @@ GameObject::GameObject(const std::string& name, GameObject* parent)
 
 GameObject::~GameObject()
 {
+    if (parent)
+    {
+        parent->RemoveChild(this);
+        parent = nullptr;
+    }
     CleanUp();
 }
 
@@ -29,7 +34,11 @@ void GameObject::CleanUp()
 {
     for (GameObject* child : children)
     {
-        delete child;
+        if (child)
+        {
+            child->parent = nullptr;
+            delete child;
+        }
     }
     children.clear();
 
@@ -59,9 +68,88 @@ void GameObject::RemoveChild(GameObject* child)
     auto it = std::find(children.begin(), children.end(), child);
     if (it != children.end())
     {
-        (*it)->SetParent(nullptr);
         children.erase(it);
+        child->SetParent(nullptr);
     }
+}
+
+void GameObject::InsertChild(int index, GameObject* child)
+{
+    if (child && std::find(children.begin(), children.end(), child) == children.end())
+    {
+        if (index < 0 || index >= static_cast<int>(children.size()))
+        {
+            children.push_back(child);
+        }
+        else
+        {
+            children.insert(children.begin() + index, child);
+        }
+        child->SetParent(this);
+    }
+}
+
+int GameObject::GetChildIndex(GameObject* child) const
+{
+    for (size_t i = 0; i < children.size(); ++i)
+    {
+        if (children[i] == child) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+GameObject* GameObject::Clone(GameObject* newParent, bool appendCopySuffix)
+{
+    std::string cloneName = name;
+    if (appendCopySuffix)
+    {
+        cloneName += " (Copy)";
+    }
+
+    GameObject* copy = new GameObject(cloneName, newParent);
+    copy->active = this->active;
+
+    if (this->transform && copy->transform)
+    {
+        copy->transform->position = this->transform->position;
+        copy->transform->rotation = this->transform->rotation;
+        copy->transform->scale = this->transform->scale;
+    }
+
+    if (this->mesh && copy->mesh)
+    {
+        copy->mesh->meshName = this->mesh->meshName;
+        copy->mesh->showNormalsPerFace = this->mesh->showNormalsPerFace;
+        copy->mesh->showNormalsPerVertex = this->mesh->showNormalsPerVertex;
+        if (this->mesh->GetVertexCount() > 0)
+        {
+            copy->mesh->InitBuffers(this->mesh->GetVertices(), this->mesh->GetIndices());
+        }
+    }
+
+    if (this->texture && copy->texture)
+    {
+        copy->texture->showChecker = this->texture->showChecker;
+        if (this->texture->GetPath() != "None" && !this->texture->GetPath().empty())
+        {
+            copy->texture->LoadTexture(this->texture->GetPath());
+        }
+        else if (this->texture->GetTextureID() != 0)
+        {
+            copy->texture->SetTexture(this->texture->GetTextureID(), this->texture->GetPath(),
+                                     this->texture->GetWidth(), this->texture->GetHeight());
+        }
+    }
+
+    for (GameObject* child : children)
+    {
+        if (child)
+        {
+            child->Clone(copy, false);
+        }
+    }
+
+    return copy;
 }
 
 Component* GameObject::CreateComponent(ComponentType type)
@@ -97,18 +185,6 @@ Component* GameObject::CreateComponent(ComponentType type)
         components.push_back(newComp);
     }
     return newComp;
-}
-
-Component* GameObject::GetComponent(ComponentType type) const
-{
-    for (Component* comp : components)
-    {
-        if (comp && comp->GetType() == type)
-        {
-            return comp;
-        }
-    }
-    return nullptr;
 }
 
 void GameObject::SetTexture(const std::string& texturePath)

@@ -68,6 +68,82 @@ void main()
 ModuleRender::ModuleRender() {}
 ModuleRender::~ModuleRender() {}
 
+bool ModuleRender::IsDescendantOf(GameObject* candidate, GameObject* potentialAncestor) const
+{
+    if (!candidate || !potentialAncestor) return false;
+    GameObject* curr = candidate->GetParent();
+    while (curr)
+    {
+        if (curr == potentialAncestor) return true;
+        curr = curr->GetParent();
+    }
+    return false;
+}
+
+int ModuleRender::GetRootGameObjectIndex(GameObject* go) const
+{
+    for (size_t i = 0; i < gameObjects.size(); ++i)
+    {
+        if (gameObjects[i] == go) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+void ModuleRender::AddGameObject(GameObject* go, GameObject* parent, int index)
+{
+    if (!go) return;
+
+    if (parent)
+    {
+        parent->InsertChild(index, go);
+    }
+    else
+    {
+        go->SetParent(nullptr);
+        if (std::find(gameObjects.begin(), gameObjects.end(), go) == gameObjects.end())
+        {
+            if (index >= 0 && index <= static_cast<int>(gameObjects.size()))
+            {
+                gameObjects.insert(gameObjects.begin() + index, go);
+            }
+            else
+            {
+                gameObjects.push_back(go);
+            }
+        }
+    }
+}
+
+void ModuleRender::DetachGameObject(GameObject* go)
+{
+    if (!go) return;
+
+    if (selectedGameObject == go || IsDescendantOf(selectedGameObject, go))
+    {
+        selectedGameObject = nullptr;
+    }
+
+    if (go->GetParent())
+    {
+        go->GetParent()->RemoveChild(go);
+    }
+    else
+    {
+        auto it = std::find(gameObjects.begin(), gameObjects.end(), go);
+        if (it != gameObjects.end())
+        {
+            gameObjects.erase(it);
+        }
+    }
+}
+
+void ModuleRender::DeleteGameObject(GameObject* go)
+{
+    if (!go) return;
+    DetachGameObject(go);
+    delete go;
+}
+
 GameObject* ModuleRender::CreateGameObject(const std::string& name, GameObject* parent)
 {
     GameObject* go = new GameObject(name, parent);
@@ -79,9 +155,10 @@ GameObject* ModuleRender::CreateGameObject(const std::string& name, GameObject* 
     return go;
 }
 
-GameObject* ModuleRender::CreatePrimitive(const std::string& type)
+GameObject* ModuleRender::CreatePrimitive(const std::string& type, GameObject* parent)
 {
-    GameObject* go = new GameObject(type + " " + std::to_string(gameObjects.size() + 1));
+    std::string name = type + " " + std::to_string(gameObjects.size() + 1);
+    GameObject* go = new GameObject(name, parent);
     if (type == "Cube") go->mesh->CreateCube();
     else if (type == "Plane" || type == "Plane / Quad") go->mesh->CreatePlane();
     else if (type == "Sphere") go->mesh->CreateSphere();
@@ -89,24 +166,27 @@ GameObject* ModuleRender::CreatePrimitive(const std::string& type)
     else if (type == "Pyramid") go->mesh->CreatePyramid();
     else if (type == "Triangle") go->mesh->CreateTriangle();
 
-    gameObjects.push_back(go);
+    if (!parent)
+    {
+        gameObjects.push_back(go);
+    }
     selectedGameObject = go;
     LOG("Created basic geometry: %s", type.c_str());
     return go;
 }
 
-bool ModuleRender::LoadModel(const std::string& path)
+GameObject* ModuleRender::LoadModel(const std::string& path)
 {
     GameObject* newObj = Model::LoadToGameObject(path);
     if (!newObj)
     {
-        return false;
+        return nullptr;
     }
 
     gameObjects.push_back(newObj);
     selectedGameObject = newObj;
 
-    return true;
+    return newObj;
 }
 
 void ModuleRender::ApplyTextureToSelected(const std::string& texturePath)

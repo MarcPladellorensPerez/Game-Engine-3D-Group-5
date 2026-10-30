@@ -4,6 +4,8 @@
 #include "ModuleCamera.h"
 #include "ModuleRender.h"
 #include "Model.h"
+#include "GameObject.h"
+#include "EditorCommand.h"
 #include <SDL3/SDL.h>
 #include <glad/glad.h>
 #include <imgui.h>
@@ -11,11 +13,7 @@
 #include <imgui_impl_opengl3.h>
 #include <cstdio>
 #include <cstdarg>
-#include <IL/il.h>
-#ifdef _WIN32
-#include <windows.h>
-#include <psapi.h>
-#endif
+#include <algorithm>
 
 ModuleEditor::ModuleEditor() {}
 ModuleEditor::~ModuleEditor() {}
@@ -23,6 +21,7 @@ ModuleEditor::~ModuleEditor() {}
 bool ModuleEditor::Init()
 {
     ClearLog();
+    ClearHistory();
     LOG("Init ImGui Editor");
 
     IMGUI_CHECKVERSION();
@@ -48,6 +47,8 @@ UpdateStatus ModuleEditor::PreUpdate()
 
 UpdateStatus ModuleEditor::Update()
 {
+    HandleShortcuts();
+
     DrawMainMenuBar();
 
     if (showConfigWindow) DrawConfigurationWindow();
@@ -55,6 +56,8 @@ UpdateStatus ModuleEditor::Update()
     if (showHierarchyWindow) DrawHierarchyWindow();
     if (showInspectorWindow) DrawInspectorWindow();
     if (showAboutWindow) DrawAboutWindow();
+
+    ProcessPendingActions();
 
     // Keep track of FPS and MS
     float currentFps = ImGui::GetIO().Framerate;
@@ -79,6 +82,12 @@ UpdateStatus ModuleEditor::PostUpdate()
 bool ModuleEditor::CleanUp()
 {
     LOG("CleanUp ImGui Editor");
+    ClearHistory();
+    if (clipboardGameObject)
+    {
+        delete clipboardGameObject;
+        clipboardGameObject = nullptr;
+    }
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
@@ -106,6 +115,251 @@ void ModuleEditor::ClearLog()
     logLineOffsets.push_back(0);
 }
 
+void ModuleEditor::ExecuteCommand(EditorCommand* cmd, bool execute)
+{
+    if (!cmd) return;
+
+    if (execute)
+    {
+        cmd->Execute();
+    }
+
+    redoStack.clear();
+    undoStack.push_back(std::unique_ptr<EditorCommand>(cmd));
+
+    if (undoStack.size() > maxHistorySize)
+    {
+        undoStack.erase(undoStack.begin());
+    }
+
+    LOG("[History] %s", cmd->GetName().c_str());
+}
+
+bool ModuleEditor::Undo()
+{
+    if (undoStack.empty()) return false;
+
+    auto cmd = std::move(undoStack.back());
+    undoStack.pop_back();
+
+    cmd->Undo();
+    LOG("[Undo] %s", cmd->GetName().c_str());
+
+    redoStack.push_back(std::move(cmd));
+    return true;
+}
+
+bool ModuleEditor::Redo()
+{
+    if (redoStack.empty()) return false;
+
+    auto cmd = std::move(redoStack.back());
+    redoStack.pop_back();
+
+    cmd->Redo();
+    LOG("[Redo] %s", cmd->GetName().c_str());
+
+    undoStack.push_back(std::move(cmd));
+    return true;
+}
+
+bool ModuleEditor::CanUndo() const
+{
+    return !undoStack.empty();
+}
+
+bool ModuleEditor::CanRedo() const
+{
+    return !redoStack.empty();
+}
+
+std::string ModuleEditor::GetUndoCommandName() const
+{
+    if (!undoStack.empty()) return undoStack.back()->GetName();
+    return "";
+}
+
+std::string ModuleEditor::GetRedoCommandName() const
+{
+    if (!redoStack.empty()) return redoStack.back()->GetName();
+    return "";
+}
+
+void ModuleEditor::ClearHistory()
+{
+    undoStack.clear();
+    redoStack.clear();
+}
+
+void ModuleEditor::HandleShortcuts()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantTextInput) return;
+
+    bool ctrl = io.KeyCtrl;
+    bool shift = io.KeyShift;
+
+    // Undo: Ctrl + Z
+    if (ctrl && !shift && ImGui::IsKeyPressed(ImGuiKey_Z, false))
+    {
+        Undo();
+    }
+    // Redo: Ctrl + Y or Ctrl + Shift + Z
+    else if ((ctrl && ImGui::IsKeyPressed(ImGuiKey_Y, false)) ||
+             (ctrl && shift && ImGui::IsKeyPressed(ImGuiKey_Z, false)))
+    {
+        Redo();
+    }
+    // Duplicate: Ctrl + D
+    else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_D, false))
+    {
+        DuplicateSelectedGameObject();
+    }
+    // Copy: Ctrl + C
+    else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_C, false))
+    {
+        CopySelectedGameObject();
+    }
+    // Paste: Ctrl + V
+    else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_V, false))
+    {
+        PasteGameObject();
+    }
+    // Cut: Ctrl + X
+    else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_X, false))
+    {
+        CutSelectedGameObject();
+    }
+    // Delete: Delete key
+    else if (ImGui::IsKeyPressed(ImGuiKey_Delete, false))
+    {
+        DeleteSelectedGameObject();
+    }
+}
+
+void ModuleEditor::DeleteSelectedGameObject()
+{
+    GameObject* selected = (App && App->renderer) ? App->renderer->GetSelectedGameObject() : nullptr;
+    if (!selected) return;
+
+    pendingDeleteTarget = selected;
+}
+
+void ModuleEditor::DuplicateSelectedGameObject()
+{
+    GameObject* selected = (App && App->renderer) ? App->renderer->GetSelectedGameObject() : nullptr;
+    if (!selected) return;
+
+    pendingDuplicateTarget = selected;
+}
+
+void ModuleEditor::CopySelectedGameObject()
+{
+    GameObject* selected = (App && App->renderer) ? App->renderer->GetSelectedGameObject() : nullptr;
+    if (!selected) return;
+
+    if (clipboardGameObject)
+    {
+        delete clipboardGameObject;
+        clipboardGameObject = nullptr;
+    }
+
+    clipboardGameObject = selected->Clone(nullptr, false);
+    LOG("[Clipboard] Copied '%s'", selected->GetName().c_str());
+}
+
+void ModuleEditor::PasteGameObject()
+{
+    if (!clipboardGameObject) return;
+
+    pendingPaste = true;
+    pendingPasteTarget = (App && App->renderer) ? App->renderer->GetSelectedGameObject() : nullptr;
+}
+
+void ModuleEditor::CutSelectedGameObject()
+{
+    CopySelectedGameObject();
+    DeleteSelectedGameObject();
+}
+
+GameObject* ModuleEditor::CreatePrimitive(const std::string& type, GameObject* parent)
+{
+    if (!App || !App->renderer) return nullptr;
+    GameObject* go = App->renderer->CreatePrimitive(type, parent);
+    if (go)
+    {
+        ExecuteCommand(new CreateGameObjectCommand(go, parent), false);
+    }
+    return go;
+}
+
+GameObject* ModuleEditor::CreateEmptyGameObject(GameObject* parent)
+{
+    if (!App || !App->renderer) return nullptr;
+    std::string name = "GameObject " + std::to_string(App->renderer->GetGameObjects().size() + 1);
+    GameObject* go = App->renderer->CreateGameObject(name, parent);
+    if (go)
+    {
+        ExecuteCommand(new CreateGameObjectCommand(go, parent), false);
+    }
+    return go;
+}
+
+void ModuleEditor::ProcessPendingActions()
+{
+    if (pendingDeleteTarget)
+    {
+        ExecuteCommand(new DeleteGameObjectCommand(pendingDeleteTarget));
+        pendingDeleteTarget = nullptr;
+    }
+
+    if (pendingDuplicateTarget)
+    {
+        GameObject* parent = pendingDuplicateTarget->GetParent();
+        GameObject* clone = pendingDuplicateTarget->Clone(parent, true);
+        if (clone->transform)
+        {
+            clone->transform->position += glm::vec3(1.0f, 0.0f, 1.0f);
+        }
+        if (!parent && App && App->renderer)
+        {
+            App->renderer->AddGameObject(clone, nullptr);
+        }
+        ExecuteCommand(new CreateGameObjectCommand(clone, parent), false);
+        if (App && App->renderer)
+        {
+            App->renderer->SetSelectedGameObject(clone);
+        }
+        LOG("[Hierarchy] Duplicated GameObject '%s'", clone->GetName().c_str());
+        pendingDuplicateTarget = nullptr;
+    }
+
+    if (pendingPaste)
+    {
+        if (clipboardGameObject)
+        {
+            GameObject* targetParent = pendingPasteTarget ? pendingPasteTarget->GetParent() : nullptr;
+            GameObject* clone = clipboardGameObject->Clone(targetParent, true);
+            if (clone->transform)
+            {
+                clone->transform->position += glm::vec3(1.0f, 0.0f, 1.0f);
+            }
+            if (!targetParent && App && App->renderer)
+            {
+                App->renderer->AddGameObject(clone, nullptr);
+            }
+            ExecuteCommand(new CreateGameObjectCommand(clone, targetParent), false);
+            if (App && App->renderer)
+            {
+                App->renderer->SetSelectedGameObject(clone);
+            }
+            LOG("[Hierarchy] Pasted GameObject '%s'", clone->GetName().c_str());
+        }
+        pendingPaste = false;
+        pendingPasteTarget = nullptr;
+    }
+}
+
 void ModuleEditor::DrawMainMenuBar()
 {
     if (ImGui::BeginMainMenuBar())
@@ -120,32 +374,61 @@ void ModuleEditor::DrawMainMenuBar()
             }
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu("Edit"))
+        {
+            std::string undoLabel = "Undo";
+            if (CanUndo()) undoLabel += " (" + GetUndoCommandName() + ")";
+            if (ImGui::MenuItem(undoLabel.c_str(), "Ctrl+Z", false, CanUndo()))
+            {
+                Undo();
+            }
+
+            std::string redoLabel = "Redo";
+            if (CanRedo()) redoLabel += " (" + GetRedoCommandName() + ")";
+            if (ImGui::MenuItem(redoLabel.c_str(), "Ctrl+Y", false, CanRedo()))
+            {
+                Redo();
+            }
+
+            ImGui::Separator();
+
+            GameObject* sel = (App && App->renderer) ? App->renderer->GetSelectedGameObject() : nullptr;
+            bool hasSel = (sel != nullptr);
+
+            if (ImGui::MenuItem("Cut", "Ctrl+X", false, hasSel))
+            {
+                CutSelectedGameObject();
+            }
+            if (ImGui::MenuItem("Copy", "Ctrl+C", false, hasSel))
+            {
+                CopySelectedGameObject();
+            }
+            if (ImGui::MenuItem("Paste", "Ctrl+V", false, clipboardGameObject != nullptr))
+            {
+                PasteGameObject();
+            }
+            if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, hasSel))
+            {
+                DuplicateSelectedGameObject();
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Delete", "Delete", false, hasSel))
+            {
+                DeleteSelectedGameObject();
+            }
+
+            ImGui::EndMenu();
+        }
         if (ImGui::BeginMenu("Create"))
         {
-            if (ImGui::MenuItem("Cube"))
-            {
-                if (App && App->renderer) App->renderer->CreatePrimitive("Cube");
-            }
-            if (ImGui::MenuItem("Plane / Quad"))
-            {
-                if (App && App->renderer) App->renderer->CreatePrimitive("Plane");
-            }
-            if (ImGui::MenuItem("Sphere"))
-            {
-                if (App && App->renderer) App->renderer->CreatePrimitive("Sphere");
-            }
-            if (ImGui::MenuItem("Cylinder"))
-            {
-                if (App && App->renderer) App->renderer->CreatePrimitive("Cylinder");
-            }
-            if (ImGui::MenuItem("Pyramid"))
-            {
-                if (App && App->renderer) App->renderer->CreatePrimitive("Pyramid");
-            }
-            if (ImGui::MenuItem("Triangle"))
-            {
-                if (App && App->renderer) App->renderer->CreatePrimitive("Triangle");
-            }
+            if (ImGui::MenuItem("Cube")) CreatePrimitive("Cube");
+            if (ImGui::MenuItem("Plane / Quad")) CreatePrimitive("Plane");
+            if (ImGui::MenuItem("Sphere")) CreatePrimitive("Sphere");
+            if (ImGui::MenuItem("Cylinder")) CreatePrimitive("Cylinder");
+            if (ImGui::MenuItem("Pyramid")) CreatePrimitive("Pyramid");
+            if (ImGui::MenuItem("Triangle")) CreatePrimitive("Triangle");
+            ImGui::Separator();
+            if (ImGui::MenuItem("Empty GameObject")) CreateEmptyGameObject();
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View"))
@@ -196,6 +479,38 @@ void ModuleEditor::DrawHierarchyWindow()
         }
     }
 
+    if (ImGui::BeginPopupContextWindow(nullptr, ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
+    {
+        if (ImGui::MenuItem("Paste", "Ctrl+V", false, clipboardGameObject != nullptr))
+        {
+            PasteGameObject();
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Create Empty GameObject"))
+        {
+            CreateEmptyGameObject(nullptr);
+        }
+        if (ImGui::BeginMenu("Create 3D Object"))
+        {
+            if (ImGui::MenuItem("Cube")) CreatePrimitive("Cube", nullptr);
+            if (ImGui::MenuItem("Plane")) CreatePrimitive("Plane", nullptr);
+            if (ImGui::MenuItem("Sphere")) CreatePrimitive("Sphere", nullptr);
+            if (ImGui::MenuItem("Cylinder")) CreatePrimitive("Cylinder", nullptr);
+            if (ImGui::MenuItem("Pyramid")) CreatePrimitive("Pyramid", nullptr);
+            if (ImGui::MenuItem("Triangle")) CreatePrimitive("Triangle", nullptr);
+            ImGui::EndMenu();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(0) && !ImGui::IsAnyItemHovered())
+    {
+        if (App && App->renderer)
+        {
+            App->renderer->SetSelectedGameObject(nullptr);
+        }
+    }
+
     ImGui::End();
 }
 
@@ -211,12 +526,54 @@ void ModuleEditor::DrawGameObjectNode(GameObject* go)
         flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 
     bool nodeOpen = ImGui::TreeNodeEx(reinterpret_cast<void*>(go), flags, "%s", go->GetName().c_str());
-    if (ImGui::IsItemClicked())
+    if (ImGui::IsItemClicked(0))
     {
         if (App && App->renderer)
         {
             App->renderer->SetSelectedGameObject(go);
         }
+    }
+
+    if (ImGui::BeginPopupContextItem())
+    {
+        if (App && App->renderer)
+        {
+            App->renderer->SetSelectedGameObject(go);
+        }
+
+        if (ImGui::MenuItem("Copy", "Ctrl+C"))
+        {
+            CopySelectedGameObject();
+        }
+        if (ImGui::MenuItem("Paste", "Ctrl+V", false, clipboardGameObject != nullptr))
+        {
+            PasteGameObject();
+        }
+        if (ImGui::MenuItem("Duplicate", "Ctrl+D"))
+        {
+            DuplicateSelectedGameObject();
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Delete", "Delete"))
+        {
+            pendingDeleteTarget = go;
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Create Empty Child"))
+        {
+            CreateEmptyGameObject(go);
+        }
+        if (ImGui::BeginMenu("Create 3D Object"))
+        {
+            if (ImGui::MenuItem("Cube")) CreatePrimitive("Cube", go);
+            if (ImGui::MenuItem("Plane")) CreatePrimitive("Plane", go);
+            if (ImGui::MenuItem("Sphere")) CreatePrimitive("Sphere", go);
+            if (ImGui::MenuItem("Cylinder")) CreatePrimitive("Cylinder", go);
+            if (ImGui::MenuItem("Pyramid")) CreatePrimitive("Pyramid", go);
+            if (ImGui::MenuItem("Triangle")) CreatePrimitive("Triangle", go);
+            ImGui::EndMenu();
+        }
+        ImGui::EndPopup();
     }
 
     if (nodeOpen && !go->GetChildren().empty())
@@ -256,13 +613,67 @@ void ModuleEditor::DrawInspectorWindow()
             selected->SetActive(active);
         }
 
+        ImGui::SameLine();
+        if (ImGui::Button("Duplicate"))
+        {
+            DuplicateSelectedGameObject();
+        }
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.2f, 0.2f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.25f, 0.25f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.5f, 0.15f, 0.15f, 1.0f));
+        if (ImGui::Button("Delete"))
+        {
+            DeleteSelectedGameObject();
+        }
+        ImGui::PopStyleColor(3);
+
         ImGui::Separator();
 
         if (selected->transform && ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
         {
+            static glm::vec3 startPos, startRot, startScale;
+            static bool transformDragging = false;
+            static GameObject* dragGO = nullptr;
+
+            if (!transformDragging || dragGO != selected)
+            {
+                startPos = selected->transform->position;
+                startRot = selected->transform->rotation;
+                startScale = selected->transform->scale;
+                dragGO = selected;
+            }
+
             ImGui::DragFloat3("Position", &selected->transform->position.x, 0.1f);
+            bool actPos = ImGui::IsItemActivated();
+            bool deactPos = ImGui::IsItemDeactivatedAfterEdit();
+
             ImGui::DragFloat3("Rotation", &selected->transform->rotation.x, 1.0f);
+            bool actRot = ImGui::IsItemActivated();
+            bool deactRot = ImGui::IsItemDeactivatedAfterEdit();
+
             ImGui::DragFloat3("Scale", &selected->transform->scale.x, 0.1f);
+            bool actScale = ImGui::IsItemActivated();
+            bool deactScale = ImGui::IsItemDeactivatedAfterEdit();
+
+            if (actPos || actRot || actScale)
+            {
+                transformDragging = true;
+            }
+
+            if (deactPos || deactRot || deactScale)
+            {
+                if (glm::length(startPos - selected->transform->position) > 0.0001f ||
+                    glm::length(startRot - selected->transform->rotation) > 0.0001f ||
+                    glm::length(startScale - selected->transform->scale) > 0.0001f)
+                {
+                    ExecuteCommand(new TransformCommand(selected, startPos, startRot, startScale,
+                                                        selected->transform->position,
+                                                        selected->transform->rotation,
+                                                        selected->transform->scale), false);
+                }
+                transformDragging = false;
+            }
         }
 
         if (selected->mesh && ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen))
@@ -523,16 +934,7 @@ void ModuleEditor::DrawConfigurationWindow()
 
         ImGui::Text("CPUs: %d Cores", SDL_GetNumLogicalCPUCores());
         ImGui::Text("CPU Cache Line: %d bytes", SDL_GetCPUCacheLineSize());
-        ILint devilVer = ilGetInteger(IL_VERSION_NUM);
-        ImGui::Text("DevIL Version: %d", devilVer);
         ImGui::Text("System RAM: %d MB", SDL_GetSystemRAM());
-#ifdef _WIN32
-        PROCESS_MEMORY_COUNTERS pmc;
-        if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
-        {
-            ImGui::Text("Process RAM: %.2f MB", pmc.WorkingSetSize / (1024.0f * 1024.0f));
-        }
-#endif
         ImGui::Separator();
 
         const char* glVendor = (const char*)glGetString(GL_VENDOR);
@@ -574,7 +976,7 @@ void ModuleEditor::DrawAboutWindow()
     ImGui::BulletText("Dear ImGui %s", IMGUI_VERSION);
     ImGui::BulletText("Assimp (Open Asset Import Library)");
     ImGui::BulletText("GLM (OpenGL Mathematics)");
-    ImGui::BulletText("DevIL (Developer's Image Library)");
+    ImGui::BulletText("stb_image");
     ImGui::Separator();
 
     ImGui::Text("Licencia:");

@@ -1,5 +1,7 @@
 #include "Application.h"
 #include "ModuleRender.h"
+#include "ModuleEditor.h"
+#include "EditorCommand.h"
 #include <SDL3/SDL_main.h>
 #include <imgui_impl_sdl3.h>
 
@@ -42,7 +44,11 @@ int main(int argc, char* argv[])
                     if (ext == "fbx" || ext == "obj" || ext == "dae" || ext == "gltf" || ext == "glb")
                     {
                         LOG("[DRAG&DROP] 3D Model: %s", droppedPath.c_str());
-                        App->renderer->LoadModel(droppedPath);
+                        GameObject* go = App->renderer->LoadModel(droppedPath);
+                        if (go && App->editor)
+                        {
+                            App->editor->ExecuteCommand(new CreateGameObjectCommand(go, nullptr), false);
+                        }
                     }
                     else if (ext == "dds" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "tga" || ext == "bmp")
                     {

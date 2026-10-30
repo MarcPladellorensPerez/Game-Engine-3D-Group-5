@@ -22,10 +22,16 @@ public:
     UpdateStatus PostUpdate() override;
     bool CleanUp() override;
 
-    bool LoadModel(const std::string& path);
+    GameObject* LoadModel(const std::string& path);
     void ApplyTextureToSelected(const std::string& texturePath);
-    GameObject* CreatePrimitive(const std::string& type);
+    GameObject* CreatePrimitive(const std::string& type, GameObject* parent = nullptr);
     GameObject* CreateGameObject(const std::string& name = "GameObject", GameObject* parent = nullptr);
+
+    int GetRootGameObjectIndex(GameObject* go) const;
+    void AddGameObject(GameObject* go, GameObject* parent = nullptr, int index = -1);
+    void DetachGameObject(GameObject* go);
+    void DeleteGameObject(GameObject* go);
+    bool IsDescendantOf(GameObject* candidate, GameObject* potentialAncestor) const;
 
     const std::vector<GameObject*>& GetGameObjects() const { return gameObjects; }
     GameObject* GetSelectedGameObject() const { return selectedGameObject; }

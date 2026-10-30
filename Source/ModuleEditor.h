@@ -2,7 +2,11 @@
 #include "Module.h"
 #include <vector>
 #include <string>
+#include <memory>
 #include <imgui.h>
+
+class EditorCommand;
+class GameObject;
 
 class ModuleEditor : public Module
 {
@@ -19,7 +23,27 @@ public:
     void AddLog(const char* fmt, ...);
     void ClearLog();
 
+    void ExecuteCommand(EditorCommand* cmd, bool execute = true);
+    bool Undo();
+    bool Redo();
+    bool CanUndo() const;
+    bool CanRedo() const;
+    std::string GetUndoCommandName() const;
+    std::string GetRedoCommandName() const;
+    void ClearHistory();
+
+    void DeleteSelectedGameObject();
+    void DuplicateSelectedGameObject();
+    void CopySelectedGameObject();
+    void PasteGameObject();
+    void CutSelectedGameObject();
+    GameObject* CreatePrimitive(const std::string& type, GameObject* parent = nullptr);
+    GameObject* CreateEmptyGameObject(GameObject* parent = nullptr);
+
 private:
+    void HandleShortcuts();
+    void ProcessPendingActions();
+
     void DrawMainMenuBar();
     void DrawConfigurationWindow();
     void DrawConsoleWindow();
@@ -34,7 +58,17 @@ private:
     bool showInspectorWindow = true;
 
     // Hierarchy & Inspector
-    void DrawGameObjectNode(class GameObject* go);
+    void DrawGameObjectNode(GameObject* go);
+
+    std::vector<std::unique_ptr<EditorCommand>> undoStack;
+    std::vector<std::unique_ptr<EditorCommand>> redoStack;
+    size_t maxHistorySize = 50;
+
+    GameObject* clipboardGameObject = nullptr;
+    GameObject* pendingDeleteTarget = nullptr;
+    GameObject* pendingDuplicateTarget = nullptr;
+    bool pendingPaste = false;
+    GameObject* pendingPasteTarget = nullptr;
 
     // Configuration / Performance stats
     std::vector<float> fpsLog;
