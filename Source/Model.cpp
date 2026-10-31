@@ -200,6 +200,28 @@ GameObject* Model::LoadToGameObject(const std::string& path, GameObject* parent)
 
     LOG("[ASSIMP] Loading 3D Model: %s (%u meshes)", path.c_str(), scene->mNumMeshes);
 
+    // Compute overall model bounding box to detect unit scale (e.g. centimeters vs meters)
+    float minX = 1e9f, maxX = -1e9f;
+    float minY = 1e9f, maxY = -1e9f;
+    float minZ = 1e9f, maxZ = -1e9f;
+    for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
+    {
+        aiMesh* m = scene->mMeshes[i];
+        for (unsigned int v = 0; v < m->mNumVertices; ++v)
+        {
+            minX = std::min(minX, m->mVertices[v].x); maxX = std::max(maxX, m->mVertices[v].x);
+            minY = std::min(minY, m->mVertices[v].y); maxY = std::max(maxY, m->mVertices[v].y);
+            minZ = std::min(minZ, m->mVertices[v].z); maxZ = std::max(maxZ, m->mVertices[v].z);
+        }
+    }
+    float maxDim = std::max({maxX - minX, maxY - minY, maxZ - minZ});
+    float scaleFactor = (maxDim > 50.0f) ? 0.01f : 1.0f;
+    if (scaleFactor != 1.0f)
+    {
+        LOG("[ASSIMP] Model '%s' was exported in centimeters (max dimension %.1f). Automatically scaled to meters.",
+            modelName.c_str(), maxDim);
+    }
+
     for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
     {
         aiMesh* mesh = scene->mMeshes[i];
@@ -215,7 +237,7 @@ GameObject* Model::LoadToGameObject(const std::string& path, GameObject* parent)
         for (unsigned int v = 0; v < mesh->mNumVertices; ++v)
         {
             Vertex vertex;
-            vertex.Position = glm::vec3(mesh->mVertices[v].x, mesh->mVertices[v].y, mesh->mVertices[v].z);
+            vertex.Position = glm::vec3(mesh->mVertices[v].x, mesh->mVertices[v].y, mesh->mVertices[v].z) * scaleFactor;
             if (mesh->HasNormals())
             {
                 vertex.Normal = glm::vec3(mesh->mNormals[v].x, mesh->mNormals[v].y, mesh->mNormals[v].z);
@@ -254,36 +276,41 @@ GameObject* Model::LoadToGameObject(const std::string& path, GameObject* parent)
         if (mesh->mMaterialIndex >= 0)
         {
             aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-            if (material->GetTextureCount(aiTextureType_DIFFUSE) > 0)
+            aiTextureType texTypes[] = { aiTextureType_DIFFUSE, aiTextureType_BASE_COLOR };
+            for (auto tType : texTypes)
             {
-                aiString texPath;
-                material->GetTexture(aiTextureType_DIFFUSE, 0, &texPath);
-                std::string rawTex = texPath.C_Str();
-                size_t texSlash = rawTex.find_last_of("/\\");
-                std::string texBase = (texSlash != std::string::npos) ? rawTex.substr(texSlash + 1) : rawTex;
-
-                // Try various candidate locations
-                std::vector<std::string> candidates;
-                if (!directory.empty())
+                if (texLoaded) break;
+                if (material->GetTextureCount(tType) > 0)
                 {
-                    candidates.push_back(directory + "/" + texBase);
-                    candidates.push_back(directory + "/" + rawTex);
-                }
-                candidates.push_back("assets/" + texBase);
-                candidates.push_back("assets/" + rawTex);
-                candidates.push_back(texBase);
-                candidates.push_back(rawTex);
+                    aiString texPath;
+                    material->GetTexture(tType, 0, &texPath);
+                    std::string rawTex = texPath.C_Str();
+                    size_t texSlash = rawTex.find_last_of("/\\");
+                    std::string texBase = (texSlash != std::string::npos) ? rawTex.substr(texSlash + 1) : rawTex;
 
-                for (const auto& cand : candidates)
-                {
-                    FILE* f = fopen(cand.c_str(), "rb");
-                    if (f)
+                    // Try various candidate locations
+                    std::vector<std::string> candidates;
+                    if (!directory.empty())
                     {
-                        fclose(f);
-                        if (meshGO->texture->LoadTexture(cand))
+                        candidates.push_back(directory + "/" + texBase);
+                        candidates.push_back(directory + "/" + rawTex);
+                    }
+                    candidates.push_back("assets/" + texBase);
+                    candidates.push_back("assets/" + rawTex);
+                    candidates.push_back(texBase);
+                    candidates.push_back(rawTex);
+
+                    for (const auto& cand : candidates)
+                    {
+                        FILE* f = fopen(cand.c_str(), "rb");
+                        if (f)
                         {
-                            texLoaded = true;
-                            break;
+                            fclose(f);
+                            if (meshGO->texture->LoadTexture(cand))
+                            {
+                                texLoaded = true;
+                                break;
+                            }
                         }
                     }
                 }
