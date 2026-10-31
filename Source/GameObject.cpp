@@ -241,6 +241,7 @@ void GameObject::Draw(unsigned int shaderProgram, unsigned int checkerTextureID)
         }
 
         glUniform1i(glGetUniformLocation(shaderProgram, "useTexture"), useTexture ? 1 : 0);
+        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.75f, 0.75f, 0.75f);
 
         mesh->Draw(shaderProgram);
         mesh->DrawNormals(shaderProgram, modelMatrix);

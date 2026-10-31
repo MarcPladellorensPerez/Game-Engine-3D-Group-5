@@ -44,10 +44,13 @@ int main(int argc, char* argv[])
                     if (ext == "fbx" || ext == "obj" || ext == "dae" || ext == "gltf" || ext == "glb")
                     {
                         LOG("[DRAG&DROP] 3D Model: %s", droppedPath.c_str());
-                        GameObject* go = App->renderer->LoadModel(droppedPath);
-                        if (go && App->editor)
+                        if (App && App->editor)
                         {
-                            App->editor->ExecuteCommand(new CreateGameObjectCommand(go, nullptr), false);
+                            App->editor->PromptLoadModel(droppedPath);
+                        }
+                        else if (App && App->renderer)
+                        {
+                            App->renderer->LoadModel(droppedPath);
                         }
                     }
                     else if (ext == "dds" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "tga" || ext == "bmp")

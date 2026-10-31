@@ -40,6 +40,15 @@ public:
     GameObject* CreatePrimitive(const std::string& type, GameObject* parent = nullptr);
     GameObject* CreateEmptyGameObject(GameObject* parent = nullptr);
 
+    // Drag & Drop / Model Import
+    enum class DragDropAction { Ask, Replace, Add };
+    DragDropAction dragDropAction = DragDropAction::Ask;
+
+    void PromptLoadModel(const std::string& path);
+    void LoadModelDirect(const std::string& path);
+    void ClearSceneAndLoadModel(const std::string& path);
+    void ClearScene();
+
 private:
     void HandleShortcuts();
     void ProcessPendingActions();
@@ -50,12 +59,17 @@ private:
     void DrawHierarchyWindow();
     void DrawInspectorWindow();
     void DrawAboutWindow();
+    void DrawImportModelModal();
 
     bool showConfigWindow = true;
     bool showAboutWindow = false;
     bool showConsoleWindow = true;
     bool showHierarchyWindow = true;
     bool showInspectorWindow = true;
+
+    // Drag & Drop Modal state
+    std::string pendingDroppedModelPath = "";
+    bool showImportModelModal = false;
 
     // Hierarchy & Inspector
     void DrawGameObjectNode(GameObject* go);

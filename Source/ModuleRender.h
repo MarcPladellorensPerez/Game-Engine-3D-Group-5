@@ -31,6 +31,7 @@ public:
     void AddGameObject(GameObject* go, GameObject* parent = nullptr, int index = -1);
     void DetachGameObject(GameObject* go);
     void DeleteGameObject(GameObject* go);
+    void ClearScene();
     bool IsDescendantOf(GameObject* candidate, GameObject* potentialAncestor) const;
 
     const std::vector<GameObject*>& GetGameObjects() const { return gameObjects; }
@@ -42,13 +43,23 @@ public:
     Shader* GetDefaultShader() const { return defaultShader; }
     unsigned int GetCheckerTextureID() const { return checkerTextureID; }
 
-    float clearColor[4] = { 0.1f, 0.25f, 0.5f, 1.0f };
+    float clearColor[4] = { 0.15f, 0.15f, 0.15f, 1.0f };
     bool wireframe = false;
     bool depthTest = true;
     bool cullFace = false;
     bool vsync = true;
     bool showCheckerTexture = false;
     bool useLighting = true;
+
+    // 3D Grid
+    bool showGrid = true;
+    bool showGridAxes = true;
+    float gridSize = 64.0f;
+    float gridStep = 1.0f;
+
+    void CreateGridBuffers();
+    void DrawGrid();
+    void DestroyGridBuffers();
 
 private:
     void CreateCheckerTexture();
@@ -59,4 +70,13 @@ private:
     Shader* defaultShader = nullptr;
     std::vector<GameObject*> gameObjects;
     GameObject* selectedGameObject = nullptr;
+
+    // Grid buffers
+    unsigned int gridVAO = 0;
+    unsigned int gridVBO = 0;
+    size_t gridVertexCount = 0;
+
+    unsigned int gridAxisVAO = 0;
+    unsigned int gridAxisVBO = 0;
+    size_t gridAxisVertexCount = 0;
 };

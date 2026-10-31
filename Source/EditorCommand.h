@@ -191,3 +191,84 @@ private:
     glm::vec3 newPosition, newRotation, newScale;
 };
 
+class ReplaceSceneCommand : public EditorCommand
+{
+public:
+    ReplaceSceneCommand(const std::vector<GameObject*>& oldObjects, GameObject* newObj)
+        : oldObjects(oldObjects), newObject(newObj), replaced(true)
+    {
+    }
+
+    virtual ~ReplaceSceneCommand()
+    {
+        if (replaced)
+        {
+            for (GameObject* go : oldObjects)
+            {
+                if (go) delete go;
+            }
+            oldObjects.clear();
+        }
+        else
+        {
+            if (newObject)
+            {
+                delete newObject;
+                newObject = nullptr;
+            }
+        }
+    }
+
+    void Execute() override
+    {
+        if (!replaced && App && App->renderer)
+        {
+            if (newObject)
+            {
+                App->renderer->AddGameObject(newObject, nullptr);
+            }
+            for (GameObject* go : oldObjects)
+            {
+                if (go) App->renderer->DetachGameObject(go);
+            }
+            replaced = true;
+            if (newObject) App->renderer->SetSelectedGameObject(newObject);
+        }
+    }
+
+    void Undo() override
+    {
+        if (replaced && App && App->renderer)
+        {
+            if (newObject)
+            {
+                App->renderer->DetachGameObject(newObject);
+            }
+            for (size_t i = 0; i < oldObjects.size(); ++i)
+            {
+                if (oldObjects[i])
+                {
+                    App->renderer->AddGameObject(oldObjects[i], nullptr, static_cast<int>(i));
+                }
+            }
+            replaced = false;
+        }
+    }
+
+    void Redo() override
+    {
+        Execute();
+    }
+
+    std::string GetName() const override
+    {
+        return newObject ? "Load " + newObject->GetName() : "Clear Scene";
+    }
+
+private:
+    std::vector<GameObject*> oldObjects;
+    GameObject* newObject = nullptr;
+    bool replaced = true;
+};
+
+

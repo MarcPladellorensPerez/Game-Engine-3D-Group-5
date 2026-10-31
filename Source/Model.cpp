@@ -248,7 +248,9 @@ GameObject* Model::LoadToGameObject(const std::string& path, GameObject* parent)
         meshGO->mesh->InitBuffers(vertices, indices);
         meshGO->mesh->meshName = meshName;
 
-        // Load diffuse texture if material specifies one
+        bool texLoaded = false;
+
+        // 1. Load diffuse texture if material specifies one
         if (mesh->mMaterialIndex >= 0)
         {
             aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
@@ -259,21 +261,86 @@ GameObject* Model::LoadToGameObject(const std::string& path, GameObject* parent)
                 std::string rawTex = texPath.C_Str();
                 size_t texSlash = rawTex.find_last_of("/\\");
                 std::string texBase = (texSlash != std::string::npos) ? rawTex.substr(texSlash + 1) : rawTex;
-                std::string fullTexPath = directory.empty() ? texBase : (directory + "/" + texBase);
 
-                meshGO->texture->LoadTexture(fullTexPath);
+                // Try various candidate locations
+                std::vector<std::string> candidates;
+                if (!directory.empty())
+                {
+                    candidates.push_back(directory + "/" + texBase);
+                    candidates.push_back(directory + "/" + rawTex);
+                }
+                candidates.push_back("assets/" + texBase);
+                candidates.push_back("assets/" + rawTex);
+                candidates.push_back(texBase);
+                candidates.push_back(rawTex);
+
+                for (const auto& cand : candidates)
+                {
+                    FILE* f = fopen(cand.c_str(), "rb");
+                    if (f)
+                    {
+                        fclose(f);
+                        if (meshGO->texture->LoadTexture(cand))
+                        {
+                            texLoaded = true;
+                            break;
+                        }
+                    }
+                }
             }
         }
 
-        // Fallback texture search if material didn't have one
-        if (meshGO->texture->GetTextureID() == 0)
+        // 2. Fallback search by modelName and meshName in directory and assets/
+        if (!texLoaded)
         {
-            std::string fallbackTex = "assets/" + modelName + ".png";
-            meshGO->texture->LoadTexture(fallbackTex);
-            if (meshGO->texture->GetTextureID() == 0)
+            const std::vector<std::string> exts = { ".png", ".PNG", ".jpg", ".JPG", ".jpeg", ".JPEG", ".tga", ".TGA", ".dds", ".DDS" };
+            std::vector<std::string> nameCandidates;
+            for (const auto& ext : exts)
             {
-                meshGO->texture->LoadTexture("assets/Baker_house.png");
+                if (!directory.empty())
+                {
+                    nameCandidates.push_back(directory + "/" + modelName + ext);
+                    nameCandidates.push_back(directory + "/" + meshName + ext);
+                }
+                nameCandidates.push_back("assets/" + modelName + ext);
+                nameCandidates.push_back("assets/" + meshName + ext);
             }
+
+            for (const auto& cand : nameCandidates)
+            {
+                FILE* f = fopen(cand.c_str(), "rb");
+                if (f)
+                {
+                    fclose(f);
+                    if (meshGO->texture->LoadTexture(cand))
+                    {
+                        texLoaded = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 3. Fallback specifically for BakerHouse only
+        if (!texLoaded)
+        {
+            std::string lowerModel = modelName;
+            for (char& c : lowerModel) c = static_cast<char>(tolower(c));
+            if (lowerModel.find("baker") != std::string::npos)
+            {
+                FILE* f = fopen("assets/Baker_house.png", "rb");
+                if (f)
+                {
+                    fclose(f);
+                    texLoaded = meshGO->texture->LoadTexture("assets/Baker_house.png");
+                }
+            }
+        }
+
+        if (!texLoaded)
+        {
+            LOG("[Texture] No diffuse texture found for mesh '%s' of '%s'. Rendering with untextured material color.",
+                meshName.c_str(), modelName.c_str());
         }
     }
 

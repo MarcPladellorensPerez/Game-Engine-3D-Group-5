@@ -144,6 +144,17 @@ void ModuleRender::DeleteGameObject(GameObject* go)
     delete go;
 }
 
+void ModuleRender::ClearScene()
+{
+    while (!gameObjects.empty())
+    {
+        GameObject* go = gameObjects.back();
+        gameObjects.pop_back();
+        if (go) delete go;
+    }
+    selectedGameObject = nullptr;
+}
+
 GameObject* ModuleRender::CreateGameObject(const std::string& name, GameObject* parent)
 {
     GameObject* go = new GameObject(name, parent);
@@ -237,11 +248,113 @@ bool ModuleRender::Init()
     }
 
     CreateCheckerTexture();
+    CreateGridBuffers();
 
     // Baker_house loaded automatically at startup
     LoadModel("assets/BakerHouse.fbx");
 
     return true;
+}
+
+void ModuleRender::CreateGridBuffers()
+{
+    DestroyGridBuffers();
+
+    std::vector<glm::vec3> gridLines;
+    int halfCount = static_cast<int>(gridSize / gridStep);
+
+    for (int i = -halfCount; i <= halfCount; ++i)
+    {
+        if (i == 0) continue; // Skip main axes lines (drawn separately with colors)
+        float pos = i * gridStep;
+        // Parallel to Z axis
+        gridLines.push_back(glm::vec3(pos, 0.0f, -gridSize));
+        gridLines.push_back(glm::vec3(pos, 0.0f, gridSize));
+
+        // Parallel to X axis
+        gridLines.push_back(glm::vec3(-gridSize, 0.0f, pos));
+        gridLines.push_back(glm::vec3(gridSize, 0.0f, pos));
+    }
+
+    gridVertexCount = gridLines.size();
+
+    glGenVertexArrays(1, &gridVAO);
+    glGenBuffers(1, &gridVBO);
+
+    glBindVertexArray(gridVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, gridVBO);
+    glBufferData(GL_ARRAY_BUFFER, gridLines.size() * sizeof(glm::vec3), gridLines.data(), GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+
+    // Axes lines: X (Red), Z (Blue), Y (Green at origin)
+    std::vector<glm::vec3> axesLines = {
+        // X axis (Red)
+        glm::vec3(-gridSize, 0.0f, 0.0f), glm::vec3(gridSize, 0.0f, 0.0f),
+        // Z axis (Blue)
+        glm::vec3(0.0f, 0.0f, -gridSize), glm::vec3(0.0f, 0.0f, gridSize),
+        // Y axis (Green, vertical at origin)
+        glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 5.0f, 0.0f)
+    };
+    gridAxisVertexCount = axesLines.size();
+
+    glGenVertexArrays(1, &gridAxisVAO);
+    glGenBuffers(1, &gridAxisVBO);
+
+    glBindVertexArray(gridAxisVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, gridAxisVBO);
+    glBufferData(GL_ARRAY_BUFFER, axesLines.size() * sizeof(glm::vec3), axesLines.data(), GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+
+    glBindVertexArray(0);
+}
+
+void ModuleRender::DestroyGridBuffers()
+{
+    if (gridVAO != 0) { glDeleteVertexArrays(1, &gridVAO); gridVAO = 0; }
+    if (gridVBO != 0) { glDeleteBuffers(1, &gridVBO); gridVBO = 0; }
+    if (gridAxisVAO != 0) { glDeleteVertexArrays(1, &gridAxisVAO); gridAxisVAO = 0; }
+    if (gridAxisVBO != 0) { glDeleteBuffers(1, &gridAxisVBO); gridAxisVBO = 0; }
+    gridVertexCount = 0;
+    gridAxisVertexCount = 0;
+}
+
+void ModuleRender::DrawGrid()
+{
+    if (gridVAO == 0 || !defaultShader) return;
+
+    glm::mat4 modelMatrix = glm::mat4(1.0f);
+    glUniformMatrix4fv(glGetUniformLocation(defaultShader->GetProgramID(), "model"), 1, GL_FALSE, &modelMatrix[0][0]);
+    glUniform1i(glGetUniformLocation(defaultShader->GetProgramID(), "useTexture"), 0);
+    glUniform1i(glGetUniformLocation(defaultShader->GetProgramID(), "useLighting"), 0);
+
+    // Subtle dark-gray grid lines
+    glUniform3f(glGetUniformLocation(defaultShader->GetProgramID(), "objectColor"), 0.35f, 0.35f, 0.35f);
+    glBindVertexArray(gridVAO);
+    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(gridVertexCount));
+
+    // Colored center axes
+    if (showGridAxes && gridAxisVAO != 0)
+    {
+        glBindVertexArray(gridAxisVAO);
+
+        // X axis (Red)
+        glUniform3f(glGetUniformLocation(defaultShader->GetProgramID(), "objectColor"), 0.85f, 0.2f, 0.2f);
+        glDrawArrays(GL_LINES, 0, 2);
+
+        // Z axis (Blue)
+        glUniform3f(glGetUniformLocation(defaultShader->GetProgramID(), "objectColor"), 0.2f, 0.4f, 0.85f);
+        glDrawArrays(GL_LINES, 2, 2);
+
+        // Y axis (Green)
+        glUniform3f(glGetUniformLocation(defaultShader->GetProgramID(), "objectColor"), 0.2f, 0.85f, 0.2f);
+        glDrawArrays(GL_LINES, 4, 2);
+    }
+
+    glBindVertexArray(0);
 }
 
 void ModuleRender::CreateCheckerTexture()
@@ -309,6 +422,12 @@ UpdateStatus ModuleRender::Update()
         defaultShader->SetMat4("projection", projection);
         defaultShader->SetBool("useLighting", useLighting);
 
+        // Render 3D Grid
+        if (showGrid)
+        {
+            DrawGrid();
+        }
+
         // Render all GameObjects in scene
         for (GameObject* go : gameObjects)
         {
@@ -339,6 +458,8 @@ bool ModuleRender::CleanUp()
     }
     gameObjects.clear();
     selectedGameObject = nullptr;
+
+    DestroyGridBuffers();
 
     if (checkerTextureID != 0)
     {

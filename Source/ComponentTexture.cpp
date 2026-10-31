@@ -66,7 +66,7 @@ bool ComponentTexture::LoadTexture(const std::string& filepath)
     }
     if (f) fclose(f);
 
-    // Carga de textura mediante DevIL (soporta DDS, PNG, TGA, JPG, etc.)
+    // Load with DevIL (supports DDS, PNG, TGA, JPG, etc.)
     ILuint imgId = 0;
     ilGenImages(1, &imgId);
     ilBindImage(imgId);
@@ -106,7 +106,7 @@ bool ComponentTexture::LoadTexture(const std::string& filepath)
         ilDeleteImages(1, &imgId);
     }
 
-    // Fallback con stb_image si el formato no es reconocido por DevIL
+    // Fallback to stb_image
     stbi_set_flip_vertically_on_load(false);
     int w = 0, h = 0, comp = 0;
     unsigned char* data = stbi_load(finalPath.c_str(), &w, &h, &comp, 4);

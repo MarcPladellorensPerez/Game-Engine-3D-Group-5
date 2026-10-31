@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstdarg>
 #include <algorithm>
+#include <filesystem>
 
 ModuleEditor::ModuleEditor() {}
 ModuleEditor::~ModuleEditor() {}
@@ -56,6 +57,8 @@ UpdateStatus ModuleEditor::Update()
     if (showHierarchyWindow) DrawHierarchyWindow();
     if (showInspectorWindow) DrawInspectorWindow();
     if (showAboutWindow) DrawAboutWindow();
+
+    DrawImportModelModal();
 
     ProcessPendingActions();
 
@@ -230,10 +233,144 @@ void ModuleEditor::HandleShortcuts()
     {
         CutSelectedGameObject();
     }
+    // New / Clear Scene: Ctrl + N
+    else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_N, false))
+    {
+        ClearScene();
+    }
     // Delete: Delete key
     else if (ImGui::IsKeyPressed(ImGuiKey_Delete, false))
     {
         DeleteSelectedGameObject();
+    }
+}
+
+void ModuleEditor::PromptLoadModel(const std::string& path)
+{
+    if (path.empty()) return;
+
+    if (dragDropAction == DragDropAction::Replace)
+    {
+        ClearSceneAndLoadModel(path);
+    }
+    else if (dragDropAction == DragDropAction::Add || !App || !App->renderer || App->renderer->GetGameObjects().empty())
+    {
+        LoadModelDirect(path);
+    }
+    else
+    {
+        pendingDroppedModelPath = path;
+        showImportModelModal = true;
+    }
+}
+
+void ModuleEditor::LoadModelDirect(const std::string& path)
+{
+    if (!App || !App->renderer) return;
+
+    GameObject* go = App->renderer->LoadModel(path);
+    if (go)
+    {
+        ExecuteCommand(new CreateGameObjectCommand(go, nullptr), false);
+        App->renderer->SetSelectedGameObject(go);
+        if (App->camera)
+        {
+            App->camera->FocusOnModel();
+        }
+        LOG("[Scene] Added 3D Model '%s' to scene", go->GetName().c_str());
+    }
+}
+
+void ModuleEditor::ClearSceneAndLoadModel(const std::string& path)
+{
+    if (!App || !App->renderer) return;
+
+    std::vector<GameObject*> oldObjects = App->renderer->GetGameObjects();
+    for (GameObject* go : oldObjects)
+    {
+        App->renderer->DetachGameObject(go);
+    }
+
+    GameObject* newObj = App->renderer->LoadModel(path);
+    ExecuteCommand(new ReplaceSceneCommand(oldObjects, newObj), false);
+    if (newObj)
+    {
+        App->renderer->SetSelectedGameObject(newObj);
+        if (App->camera)
+        {
+            App->camera->FocusOnModel();
+        }
+        LOG("[Scene] Replaced scene with model '%s'", newObj->GetName().c_str());
+    }
+}
+
+void ModuleEditor::ClearScene()
+{
+    if (!App || !App->renderer || App->renderer->GetGameObjects().empty()) return;
+
+    std::vector<GameObject*> oldObjects = App->renderer->GetGameObjects();
+    for (GameObject* go : oldObjects)
+    {
+        App->renderer->DetachGameObject(go);
+    }
+    ExecuteCommand(new ReplaceSceneCommand(oldObjects, nullptr), false);
+    App->renderer->SetSelectedGameObject(nullptr);
+    LOG("[Scene] Cleared scene");
+}
+
+void ModuleEditor::DrawImportModelModal()
+{
+    if (showImportModelModal)
+    {
+        ImGui::OpenPopup("Import 3D Model##Modal");
+    }
+
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+    if (ImGui::BeginPopupModal("Import 3D Model##Modal", &showImportModelModal, ImGuiWindowFlags_AlwaysAutoResize))
+    {
+        size_t lastSlash = pendingDroppedModelPath.find_last_of("/\\");
+        std::string filename = (lastSlash != std::string::npos) ? pendingDroppedModelPath.substr(lastSlash + 1) : pendingDroppedModelPath;
+
+        ImGui::Text("Model: %s", filename.c_str());
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::Text("A 3D model was dragged into the engine.\nHow would you like to load it into the scene?\n\n");
+
+        if (ImGui::Button("Replace Scene (Delete Previous)", ImVec2(240, 0)))
+        {
+            ClearSceneAndLoadModel(pendingDroppedModelPath);
+            pendingDroppedModelPath.clear();
+            showImportModelModal = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Add as New Object", ImVec2(160, 0)))
+        {
+            LoadModelDirect(pendingDroppedModelPath);
+            pendingDroppedModelPath.clear();
+            showImportModelModal = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(90, 0)))
+        {
+            pendingDroppedModelPath.clear();
+            showImportModelModal = false;
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        int currentAction = static_cast<int>(dragDropAction);
+        const char* actions[] = { "Ask each time", "Always replace scene", "Always add to scene" };
+        if (ImGui::Combo("On Drag & Drop", &currentAction, actions, IM_ARRAYSIZE(actions)))
+        {
+            dragDropAction = static_cast<DragDropAction>(currentAction);
+        }
+
+        ImGui::EndPopup();
     }
 }
 
@@ -360,12 +497,67 @@ void ModuleEditor::ProcessPendingActions()
     }
 }
 
+static void DrawAssetsModelsMenu(ModuleEditor* editor)
+{
+    namespace fs = std::filesystem;
+    std::vector<fs::path> modelPaths;
+
+    std::error_code ec;
+    if (fs::exists("assets", ec) && fs::is_directory("assets", ec))
+    {
+        for (const auto& entry : fs::directory_iterator("assets", ec))
+        {
+            if (entry.is_regular_file(ec))
+            {
+                std::string ext = entry.path().extension().string();
+                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                if (ext == ".fbx" || ext == ".obj" || ext == ".dae" || ext == ".gltf" || ext == ".glb")
+                {
+                    modelPaths.push_back(entry.path());
+                }
+            }
+        }
+    }
+
+    std::sort(modelPaths.begin(), modelPaths.end(), [](const fs::path& a, const fs::path& b) {
+        return a.filename().string() < b.filename().string();
+    });
+
+    if (modelPaths.empty())
+    {
+        ImGui::TextDisabled("No 3D models in assets/");
+    }
+    else
+    {
+        for (const auto& p : modelPaths)
+        {
+            std::string label = p.stem().string();
+            std::string fullPath = p.string();
+            if (ImGui::MenuItem(label.c_str()))
+            {
+                editor->PromptLoadModel(fullPath);
+            }
+        }
+    }
+}
+
 void ModuleEditor::DrawMainMenuBar()
 {
     if (ImGui::BeginMainMenuBar())
     {
         if (ImGui::BeginMenu("File"))
         {
+            if (ImGui::MenuItem("New / Clear Scene", "Ctrl+N"))
+            {
+                ClearScene();
+            }
+            ImGui::Separator();
+            if (ImGui::BeginMenu("Load 3D Model"))
+            {
+                DrawAssetsModelsMenu(this);
+                ImGui::EndMenu();
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("Exit", "Alt+F4"))
             {
                 SDL_Event quit_event;
@@ -428,11 +620,22 @@ void ModuleEditor::DrawMainMenuBar()
             if (ImGui::MenuItem("Pyramid")) CreatePrimitive("Pyramid");
             if (ImGui::MenuItem("Triangle")) CreatePrimitive("Triangle");
             ImGui::Separator();
+            if (ImGui::BeginMenu("3D Models"))
+            {
+                DrawAssetsModelsMenu(this);
+                ImGui::EndMenu();
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("Empty GameObject")) CreateEmptyGameObject();
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View"))
         {
+            if (App && App->renderer)
+            {
+                ImGui::MenuItem("3D Grid", NULL, &App->renderer->showGrid);
+                ImGui::Separator();
+            }
             ImGui::MenuItem("Configuration", NULL, &showConfigWindow);
             ImGui::MenuItem("Console", NULL, &showConsoleWindow);
             ImGui::MenuItem("Hierarchy", NULL, &showHierarchyWindow);
@@ -498,7 +701,19 @@ void ModuleEditor::DrawHierarchyWindow()
             if (ImGui::MenuItem("Cylinder")) CreatePrimitive("Cylinder", nullptr);
             if (ImGui::MenuItem("Pyramid")) CreatePrimitive("Pyramid", nullptr);
             if (ImGui::MenuItem("Triangle")) CreatePrimitive("Triangle", nullptr);
+            ImGui::Separator();
+            if (ImGui::BeginMenu("3D Models"))
+            {
+                DrawAssetsModelsMenu(this);
+                ImGui::EndMenu();
+            }
             ImGui::EndMenu();
+        }
+        ImGui::Separator();
+        bool hasObjects = App && App->renderer && !App->renderer->GetGameObjects().empty();
+        if (ImGui::MenuItem("Clear Scene", "Ctrl+N", false, hasObjects))
+        {
+            ClearScene();
         }
         ImGui::EndPopup();
     }
@@ -867,7 +1082,35 @@ void ModuleEditor::DrawConfigurationWindow()
             ImGui::Checkbox("Depth Test", &App->renderer->depthTest);
             ImGui::Checkbox("Cull Face", &App->renderer->cullFace);
 
+            ImGui::Separator();
+            ImGui::Checkbox("Show 3D Grid", &App->renderer->showGrid);
+            if (App->renderer->showGrid)
+            {
+                ImGui::SameLine();
+                ImGui::Checkbox("Show Axes", &App->renderer->showGridAxes);
+                if (ImGui::DragFloat("Grid Size", &App->renderer->gridSize, 1.0f, 10.0f, 200.0f, "%.0f"))
+                {
+                    App->renderer->CreateGridBuffers();
+                }
+            }
+
+            ImGui::Separator();
             ImGui::ColorEdit4("Clear Color", App->renderer->clearColor);
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Scene & Import", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        const char* actions[] = { "Ask each time", "Always replace scene", "Always add to scene" };
+        int actIdx = static_cast<int>(dragDropAction);
+        if (ImGui::Combo("On Drag & Drop 3D Model", &actIdx, actions, IM_ARRAYSIZE(actions)))
+        {
+            dragDropAction = static_cast<DragDropAction>(actIdx);
+        }
+
+        if (ImGui::Button("Clear Current Scene"))
+        {
+            ClearScene();
         }
     }
 

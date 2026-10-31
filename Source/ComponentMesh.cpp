@@ -82,7 +82,7 @@ void ComponentMesh::GenerateNormalsBuffers()
 
     const float normalLength = 0.2f;
 
-    // Normales por vertice
+    // Vertex normals
     std::vector<glm::vec3> vertNormalLines;
     vertNormalLines.reserve(vertices.size() * 2);
     for (const auto& v : vertices)
@@ -107,7 +107,7 @@ void ComponentMesh::GenerateNormalsBuffers()
         vertexNormalsCount = vertNormalLines.size();
     }
 
-    // Normales por cara
+    // Face normals
     std::vector<glm::vec3> faceNormalLines;
     size_t numTriangles = indices.empty() ? (vertices.size() / 3) : (indices.size() / 3);
     faceNormalLines.reserve(numTriangles * 2);
@@ -186,7 +186,7 @@ void ComponentMesh::DrawNormals(unsigned int shaderProgram, const glm::mat4& mod
     if (useTextureLoc != -1) glUniform1i(useTextureLoc, 0);
     if (useLightingLoc != -1) glUniform1i(useLightingLoc, 0);
 
-    // Normales por vertice (Cyan)
+    // Vertex normals (cyan)
     if (showNormalsPerVertex && vertexNormalsVAO != 0 && vertexNormalsCount > 0)
     {
         if (objColorLoc != -1) glUniform3f(objColorLoc, 0.0f, 1.0f, 1.0f);
@@ -195,7 +195,7 @@ void ComponentMesh::DrawNormals(unsigned int shaderProgram, const glm::mat4& mod
         glBindVertexArray(0);
     }
 
-    // Normales por cara (Amarillo)
+    // Face normals (yellow)
     if (showNormalsPerFace && faceNormalsVAO != 0 && faceNormalsCount > 0)
     {
         if (objColorLoc != -1) glUniform3f(objColorLoc, 1.0f, 1.0f, 0.0f);
