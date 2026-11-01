@@ -47,29 +47,42 @@ El repositorio está preparado para configurarse y compilarse automáticamente e
 * **Botón central del ratón (MMB) y arrastrar:** Desplazamiento lateral y vertical de la vista.
 * **Tecla `F`:** Centra y enfoca la cámara (*Focus*) sobre el objeto seleccionado en la jerarquía (o sobre el origen si no hay ninguno).
 
-### 2. Carga de Modelos y Texturas (Drag & Drop)
+### 2. Atajos de Teclado del Editor
+* **`Ctrl + Z`:** Deshacer última acción (Undo).
+* **`Ctrl + Y` / `Ctrl + Shift + Z`:** Rehacer última acción (Redo).
+* **`Ctrl + C`:** Copiar el GameObject seleccionado.
+* **`Ctrl + V`:** Pegar el GameObject del portapapeles en la escena.
+* **`Ctrl + X`:** Cortar el GameObject seleccionado.
+* **`Ctrl + D`:** Duplicar el GameObject seleccionado.
+* **`Delete` / `Supr`:** Eliminar el GameObject seleccionado de forma segura.
+* **`Ctrl + N`:** Nueva escena / Limpiar escena.
+
+### 3. Carga de Modelos y Texturas (Drag & Drop)
 * **Carga automática inicial:** Al arrancar, el motor carga automáticamente el modelo `assets/BakerHouse.fbx` y su textura difusa asociada.
-* **Arrastrar modelos 3D (`.fbx`, `.obj`):** Arrastra cualquier archivo 3D desde el explorador de archivos directamente a la ventana del motor. Assimp importará la geometría y la añadirá como un nuevo GameObject con sus sub-mallas a la jerarquía de la escena.
+* **Arrastrar modelos 3D (`.fbx`, `.obj`):** Arrastra cualquier archivo 3D desde el explorador de archivos directamente a la ventana del motor. Se abrirá un diálogo modal que permite elegir entre reemplazar la escena actual (*Replace Scene*), añadir el modelo como nuevo objeto (*Add as New Object*) o cancelar.
 * **Arrastrar texturas (`.png`, `.dds`, `.jpg`, `.tga`):** Arrastra una textura a la ventana del motor para aplicársela de forma inmediata al GameObject seleccionado en la Jerarquía.
 
-### 3. Ventanas del Editor (Dear ImGui)
+### 4. Ventanas del Editor (Dear ImGui)
 * **Barra de menú superior:**
-  * **File:** Opción para salir del motor de manera limpia.
-  * **Create:** Instancia geometrías básicas primitivas en la escena (Cubo, Esfera, Plano, Pirámide, Cilindro y Triángulo).
-  * **View:** Activa o desactiva la visibilidad de cada una de las ventanas del editor.
+  * **File:** Opción para crear nueva escena (`New / Clear Scene`), cargar modelos integrados desde `assets/` (`Load 3D Model`) y salir limpiamente (`Exit`).
+  * **Edit:** Opciones de `Undo` y `Redo` con indicación dinámica de la acción, y acciones de portapapeles (`Cut`, `Copy`, `Paste`, `Duplicate`, `Delete`).
+  * **Create:** Instancia geometrías básicas primitivas en la escena (Cubo, Esfera, Plano, Pirámide, Cilindro y Triángulo), modelos 3D de `assets/` (`3D Models`) y `Empty GameObject`.
+  * **View:** Activa o desactiva la visibilidad de cada una de las ventanas del editor y de la cuadrícula de referencia (`3D Grid`).
   * **Help:** Enlaces directos a la documentación en GitHub, repositorio de incidencias (*Issues*), página de *Releases* y ventana *About*.
 * **Jerarquía (Hierarchy):**
   * Lista todos los GameObjects presentes en la escena en una vista en árbol.
   * Permite seleccionar cualquier objeto haciendo clic sobre su nombre.
+  * **Menú contextual (Clic derecho):** Permite cortar, copiar, pegar, duplicar, borrar o instanciar geometrías y modelos directamente sobre la escena o como hijos del objeto seleccionado.
 * **Inspector:**
   * Muestra y permite editar las propiedades del GameObject seleccionado:
-    * **Transform:** Inspección y modificación interactiva de la Posición, Rotación y Escala.
+    * **Transform:** Inspección y modificación interactiva de la Posición, Rotación y Escala. Los cambios se registran en el historial de Deshacer/Rehacer.
     * **Mesh:** Información técnica (conteo de vértices, triángulos e índices). Incluye selectores para visualizar las **normales por cara** (amarillo) y **normales por vértice** (cian).
     * **Texture:** Ruta del archivo, resolución (ancho × alto) y canales. Incluye un conmutador para sustituir la textura activa por una textura de damero / ajedrezado (*Checkerboard*) blanco y negro generada proceduralmente.
+    * **Acciones rápidas:** Botones directos para duplicar (`Duplicate`) y eliminar (`Delete`).
 * **Configuración (Configuration):**
   * **Gráficas de rendimiento:** Histogramas en tiempo real de FPS y milisegundos por fotograma.
   * **Window:** Modo pantalla completa (*Fullscreen*), ventana redimensionable y ajuste manual de resolución.
-  * **Renderer:** Control de sincronización vertical (VSync), renderizado en modo alambre (*Wireframe*), Depth Test, Cull Face y selector del color de fondo (*Clear Color*).
+  * **Renderer:** Control de sincronización vertical (VSync), renderizado en modo alambre (*Wireframe*), Depth Test, Cull Face, selector del color de fondo (*Clear Color*) y ajustes del Grid 3D (tamaño del grid, espaciado de celdas y visualización de ejes coloreados XYZ).
   * **Camera:** Ajuste de FOV, planos de recorte (*Near Plane* y *Far Plane*), velocidad y sensibilidad.
   * **Hardware & Software:** Detección de versiones de SDL3, DevIL, especificaciones de la CPU, número de núcleos, memoria RAM total del sistema, consumo de RAM del proceso en ejecución (Working Set), fabricante de la GPU, modelo de tarjeta gráfica, versión de OpenGL y versión de GLSL.
 * **Consola (Console):**
@@ -87,6 +100,14 @@ El repositorio está preparado para configurarse y compilarse automáticamente e
 * **Doble modo de visualización de normales:** Posibilidad de activar de forma independiente normales por vértice (en cian) y normales por cara (en amarillo) para inspección de mallas.
 * **Monitoreo de memoria del proceso:** Medición en tiempo real del uso de memoria RAM privada del ejecutable mediante la API nativa de Windows (`psapi.h`).
 * **Soporte de doble backend para imágenes:** Carga principal mediante DevIL (con soporte para DDS, PNG, JPG, TGA) y capa de compatibilidad fallback con `stb_image`.
+* **Sistema de Deshacer / Rehacer (Undo / Redo):** Historial con Command Pattern en `EditorCommand.h` gestionado por `ModuleEditor`, con atajos `Ctrl+Z`, `Ctrl+Y`, `Ctrl+Shift+Z` e integración en el menú `Edit`.
+* **Portapapeles y Duplicación Profunda:** Método `GameObject::Clone()` para clonar en profundidad la jerarquía completa (mallas, buffers GPU, componentes e hijos) con atajos `Ctrl+C`, `Ctrl+V`, `Ctrl+X`, `Ctrl+D` y menú contextual.
+* **Eliminación Segura y Diferida:** Borrado diferido de GameObjects al final del frame para evitar accesos inválidos de memoria durante la iteración del render, reversible con `Ctrl+Z`.
+* **Gestión Interactiva de Drag & Drop:** Diálogo modal contextual al soltar modelos 3D con opción de reemplazar escena o añadir objeto y selector de preferencias.
+* **Cuadrícula de Referencia 3D y Ejes (XZ Grid & Axis Gizmo):** Grid en plano XZ con ejes XYZ coloreados, ajustables en tamaño/espaciado y con toggle en el menú.
+* **Accesos Rápidos de Carga en Menú:** Carga directa desde menú superior de los modelos incluidos en `assets/` (`BakerHouse`, `Dog`, `SciFiWall`).
+* **Entorno de Viewport Profesional (Dark Mode):** Fondo en gris oscuro neutro (`#262626`) para mejorar la fidelidad cromática y contraste con el grid y las texturas.
+* **Script de compilación `pou.sh`:** Automatización para entornos Linux con Ninja y generación de `compile_commands.json` para LSP.
 
 ---
 
