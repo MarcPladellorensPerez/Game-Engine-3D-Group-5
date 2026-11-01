@@ -31,6 +31,9 @@ bool ModuleEditor::Init()
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     ImGui::StyleColorsDark();
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowRounding = 0.0f;
+    style.WindowBorderSize = 1.0f;
 
     ImGui_ImplSDL3_InitForOpenGL(App->window->GetWindow(), App->renderer->GetContext());
     ImGui_ImplOpenGL3_Init("#version 460");
@@ -48,6 +51,17 @@ UpdateStatus ModuleEditor::PreUpdate()
 
 UpdateStatus ModuleEditor::Update()
 {
+    // Auto-relayout when the application window is resized
+    ImGuiIO& io = ImGui::GetIO();
+    float curW = io.DisplaySize.x;
+    float curH = io.DisplaySize.y;
+    if (curW > 0.0f && curH > 0.0f && (curW != lastDisplayW || curH != lastDisplayH))
+    {
+        needResetLayout = true;
+        lastDisplayW = curW;
+        lastDisplayH = curH;
+    }
+
     HandleShortcuts();
 
     DrawMainMenuBar();
@@ -61,6 +75,11 @@ UpdateStatus ModuleEditor::Update()
     DrawImportModelModal();
 
     ProcessPendingActions();
+
+    if (needResetLayout)
+    {
+        needResetLayout = false;
+    }
 
     // Keep track of FPS and MS
     float currentFps = ImGui::GetIO().Framerate;
@@ -242,6 +261,11 @@ void ModuleEditor::HandleShortcuts()
     else if (ImGui::IsKeyPressed(ImGuiKey_Delete, false))
     {
         DeleteSelectedGameObject();
+    }
+    // Reset Window Layout: Ctrl + Shift + R
+    else if (ctrl && shift && ImGui::IsKeyPressed(ImGuiKey_R, false))
+    {
+        ResetWindowLayout();
     }
 }
 
@@ -640,6 +664,11 @@ void ModuleEditor::DrawMainMenuBar()
             ImGui::MenuItem("Console", NULL, &showConsoleWindow);
             ImGui::MenuItem("Hierarchy", NULL, &showHierarchyWindow);
             ImGui::MenuItem("Inspector", NULL, &showInspectorWindow);
+            ImGui::Separator();
+            if (ImGui::MenuItem("Reset Window Layout", "Ctrl+Shift+R"))
+            {
+                ResetWindowLayout();
+            }
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Help"))
@@ -664,9 +693,42 @@ void ModuleEditor::DrawMainMenuBar()
     }
 }
 
+static void GetEditorLayout(float& leftW, float& rightW, float& topH, float& posY, float& bottomH,
+                            float& consoleX, float& consoleW, float& consoleH,
+                            float& menuH, float& margin, float& displayW, float& displayH)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    displayW = io.DisplaySize.x > 0.0f ? io.DisplaySize.x : 1280.0f;
+    displayH = io.DisplaySize.y > 0.0f ? io.DisplaySize.y : 720.0f;
+    menuH = ImGui::GetFrameHeight();
+    if (menuH < 18.0f) menuH = 22.0f;
+    margin = 0.0f; // No gap between panels
+
+    leftW = (displayW >= 1400.0f) ? 230.0f : ((displayW >= 1000.0f) ? 210.0f : std::max(170.0f, displayW * 0.18f));
+    rightW = (displayW >= 1400.0f) ? 310.0f : ((displayW >= 1000.0f) ? 280.0f : std::max(200.0f, displayW * 0.24f));
+
+    // Console spans the full width at the bottom
+    consoleH = std::clamp(displayH * 0.25f, 140.0f, 190.0f);
+    consoleX = 0.0f;
+    consoleW = displayW;
+
+    // Left panels (Hierarchy + Configuration) fill height above the console
+    float usableH = displayH - menuH - consoleH;
+    topH = usableH * 0.40f;
+    posY = menuH + topH;
+    bottomH = usableH - topH;
+}
+
 void ModuleEditor::DrawHierarchyWindow()
 {
-    ImGui::SetNextWindowSize(ImVec2(250, 400), ImGuiCond_FirstUseEver);
+    float leftW, rightW, topH, posY, bottomH, consoleX, consoleW, consoleH, menuH, margin, displayW, displayH;
+    GetEditorLayout(leftW, rightW, topH, posY, bottomH, consoleX, consoleW, consoleH, menuH, margin, displayW, displayH);
+
+    ImGuiCond cond = needResetLayout ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+    ImGui::SetNextWindowPos(ImVec2(0.0f, menuH), cond);
+    ImGui::SetNextWindowSize(ImVec2(leftW, topH), cond);
+    ImGui::SetNextWindowCollapsed(false, cond);
+
     if (!ImGui::Begin("Hierarchy", &showHierarchyWindow))
     {
         ImGui::End();
@@ -803,7 +865,14 @@ void ModuleEditor::DrawGameObjectNode(GameObject* go)
 
 void ModuleEditor::DrawInspectorWindow()
 {
-    ImGui::SetNextWindowSize(ImVec2(300, 450), ImGuiCond_FirstUseEver);
+    float leftW, rightW, topH, posY, bottomH, consoleX, consoleW, consoleH, menuH, margin, displayW, displayH;
+    GetEditorLayout(leftW, rightW, topH, posY, bottomH, consoleX, consoleW, consoleH, menuH, margin, displayW, displayH);
+
+    ImGuiCond cond = needResetLayout ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+    ImGui::SetNextWindowPos(ImVec2(displayW - rightW, menuH), cond);
+    ImGui::SetNextWindowSize(ImVec2(rightW, displayH - menuH - consoleH), cond);
+    ImGui::SetNextWindowCollapsed(false, cond);
+
     if (!ImGui::Begin("Inspector", &showInspectorWindow))
     {
         ImGui::End();
@@ -924,7 +993,14 @@ void ModuleEditor::DrawInspectorWindow()
 
 void ModuleEditor::DrawConsoleWindow()
 {
-    ImGui::SetNextWindowSize(ImVec2(550, 300), ImGuiCond_FirstUseEver);
+    float leftW, rightW, topH, posY, bottomH, consoleX, consoleW, consoleH, menuH, margin, displayW, displayH;
+    GetEditorLayout(leftW, rightW, topH, posY, bottomH, consoleX, consoleW, consoleH, menuH, margin, displayW, displayH);
+
+    ImGuiCond cond = needResetLayout ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+    ImGui::SetNextWindowPos(ImVec2(consoleX, displayH - consoleH), cond);
+    ImGui::SetNextWindowSize(ImVec2(consoleW, consoleH), cond);
+    ImGui::SetNextWindowCollapsed(false, cond);
+
     if (!ImGui::Begin("Console", &showConsoleWindow))
     {
         ImGui::End();
@@ -1025,6 +1101,14 @@ void ModuleEditor::DrawConsoleWindow()
 
 void ModuleEditor::DrawConfigurationWindow()
 {
+    float leftW, rightW, topH, posY, bottomH, consoleX, consoleW, consoleH, menuH, margin, displayW, displayH;
+    GetEditorLayout(leftW, rightW, topH, posY, bottomH, consoleX, consoleW, consoleH, menuH, margin, displayW, displayH);
+
+    ImGuiCond cond = needResetLayout ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+    ImGui::SetNextWindowPos(ImVec2(0.0f, posY), cond);
+    ImGui::SetNextWindowSize(ImVec2(leftW, displayH - posY - consoleH), cond);
+    ImGui::SetNextWindowCollapsed(false, cond);
+
     if (!ImGui::Begin("Configuration", &showConfigWindow))
     {
         ImGui::End();
@@ -1036,12 +1120,12 @@ void ModuleEditor::DrawConfigurationWindow()
         char fpsTitle[32];
         float currentFPS = fpsLog.empty() ? 0.0f : fpsLog.back();
         snprintf(fpsTitle, sizeof(fpsTitle), "Framerate %.1f", currentFPS);
-        ImGui::PlotHistogram("##framerate", fpsLog.data(), static_cast<int>(fpsLog.size()), 0, fpsTitle, 0.0f, 120.0f, ImVec2(310, 100));
+        ImGui::PlotHistogram("##framerate", fpsLog.data(), static_cast<int>(fpsLog.size()), 0, fpsTitle, 0.0f, 120.0f, ImVec2(0, 80));
 
         char msTitle[32];
         float currentMS = msLog.empty() ? 0.0f : msLog.back();
         snprintf(msTitle, sizeof(msTitle), "Milliseconds %.1f ms", currentMS);
-        ImGui::PlotHistogram("##milliseconds", msLog.data(), static_cast<int>(msLog.size()), 0, msTitle, 0.0f, 40.0f, ImVec2(310, 100));
+        ImGui::PlotHistogram("##milliseconds", msLog.data(), static_cast<int>(msLog.size()), 0, msTitle, 0.0f, 40.0f, ImVec2(0, 80));
     }
 
     if (ImGui::CollapsingHeader("Window"))
@@ -1231,3 +1315,13 @@ void ModuleEditor::DrawAboutWindow()
 
     ImGui::End();
 }
+
+void ModuleEditor::ResetWindowLayout()
+{
+    needResetLayout = true;
+    showHierarchyWindow = true;
+    showInspectorWindow = true;
+    showConfigWindow = true;
+    showConsoleWindow = true;
+}
+

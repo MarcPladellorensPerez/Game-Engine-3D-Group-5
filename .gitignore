@@ -88,3 +88,6 @@ Thumbs.db
 Desktop.ini
 # ImGui settings
 imgui.ini
+
+# Archives
+*.zip

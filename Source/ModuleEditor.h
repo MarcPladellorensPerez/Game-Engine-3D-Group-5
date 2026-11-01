@@ -48,6 +48,7 @@ public:
     void LoadModelDirect(const std::string& path);
     void ClearSceneAndLoadModel(const std::string& path);
     void ClearScene();
+    void ResetWindowLayout();
 
 private:
     void HandleShortcuts();
@@ -63,9 +64,14 @@ private:
 
     bool showConfigWindow = true;
     bool showAboutWindow = false;
+    bool needResetLayout = true;
     bool showConsoleWindow = true;
     bool showHierarchyWindow = true;
     bool showInspectorWindow = true;
+
+    // Track display size to auto-relayout on window resize
+    float lastDisplayW = 0.0f;
+    float lastDisplayH = 0.0f;
 
     // Drag & Drop Modal state
     std::string pendingDroppedModelPath = "";
