@@ -5,7 +5,7 @@
 #include <SDL3/SDL.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <imgui.h>
-
+ 
 ModuleCamera::ModuleCamera()
 {
     Reset();
@@ -253,8 +253,8 @@ UpdateStatus ModuleCamera::Update()
 
     if (isFreeLooking)
     {
-        yaw += mouseX * sensitivity;
-        pitch -= mouseY * sensitivity;
+        yaw += mouseX * sensitivity * (invertX ? -1.0f : 1.0f);
+        pitch -= mouseY * sensitivity * (invertY ? -1.0f : 1.0f);
         pitch = glm::clamp(pitch, -89.0f, 89.0f);
 
         RecalculateVectorsFromAngles();
@@ -277,8 +277,8 @@ UpdateStatus ModuleCamera::Update()
     }
     else if (isOrbiting)
     {
-        float angleX = -mouseX * sensitivity;
-        float angleY = -mouseY * sensitivity;
+        float angleX = -mouseX * sensitivity * (invertX ? -1.0f : 1.0f);
+        float angleY = -mouseY * sensitivity * (invertY ? -1.0f : 1.0f);
 
         glm::vec3 offset = Position - Reference;
         float dist = glm::length(offset);

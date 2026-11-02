@@ -15,6 +15,20 @@
 #include <cstdarg>
 #include <algorithm>
 #include <filesystem>
+#include <functional>
+#include <IL/il.h>
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <psapi.h>
+#elif defined(__linux__)
+#include <sys/resource.h>
+#endif
 
 ModuleEditor::ModuleEditor() {}
 ModuleEditor::~ModuleEditor() {}
@@ -704,8 +718,8 @@ static void GetEditorLayout(float& leftW, float& rightW, float& topH, float& pos
     if (menuH < 18.0f) menuH = 22.0f;
     margin = 0.0f; // No gap between panels
 
-    leftW = (displayW >= 1400.0f) ? 230.0f : ((displayW >= 1000.0f) ? 210.0f : std::max(170.0f, displayW * 0.18f));
-    rightW = (displayW >= 1400.0f) ? 310.0f : ((displayW >= 1000.0f) ? 280.0f : std::max(200.0f, displayW * 0.24f));
+    leftW = (displayW >= 1400.0f) ? 230.0f : ((displayW >= 1000.0f) ? 210.0f : (std::max)(170.0f, displayW * 0.18f));
+    rightW = (displayW >= 1400.0f) ? 310.0f : ((displayW >= 1000.0f) ? 280.0f : (std::max)(200.0f, displayW * 0.24f));
 
     // Console spans the full width at the bottom
     consoleH = std::clamp(displayH * 0.25f, 140.0f, 190.0f);
@@ -1253,15 +1267,133 @@ void ModuleEditor::DrawConfigurationWindow()
         }
     }
 
+    if (ImGui::CollapsingHeader("Input"))
+    {
+        if (App && App->camera)
+        {
+            ImGui::SeparatorText("Mouse");
+            ImGui::SliderFloat("Mouse Sensitivity", &App->camera->sensitivity,     0.01f, 2.0f,  "%.2f");
+            ImGui::SliderFloat("Zoom Speed",        &App->camera->zoomSpeed,        0.1f, 10.0f, "%.1f");
+            ImGui::SliderFloat("Pan Speed",         &App->camera->panSpeed,         0.5f, 30.0f, "%.1f");
+            ImGui::Checkbox("Invert X Axis", &App->camera->invertX);
+            ImGui::SameLine();
+            ImGui::Checkbox("Invert Y Axis", &App->camera->invertY);
+
+            ImGui::SeparatorText("Movement");
+            ImGui::SliderFloat("Move Speed",        &App->camera->speed,            0.5f, 50.0f, "%.1f");
+            ImGui::SliderFloat("Sprint Multiplier", &App->camera->sprintMultiplier, 1.0f, 10.0f, "%.1f");
+
+            ImGui::SeparatorText("Live State");
+            ImGuiIO& io = ImGui::GetIO();
+            ImGui::Text("Mouse Pos: (%.1f, %.1f)", io.MousePos.x, io.MousePos.y);
+            ImGui::Text("Mouse Delta: (%.1f, %.1f)", io.MouseDelta.x, io.MouseDelta.y);
+            ImGui::Text("Mouse Wheel: %.1f", io.MouseWheel);
+            ImGui::Text("Buttons: [L:%s] [R:%s] [M:%s]",
+                io.MouseDown[0] ? "DOWN" : "UP",
+                io.MouseDown[1] ? "DOWN" : "UP",
+                io.MouseDown[2] ? "DOWN" : "UP");
+            ImGui::Text("Modifiers: [Shift:%s] [Ctrl:%s] [Alt:%s]",
+                io.KeyShift ? "YES" : "NO",
+                io.KeyCtrl ? "YES" : "NO",
+                io.KeyAlt ? "YES" : "NO");
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Textures"))
+    {
+        GLint maxTexSize = 0;
+        glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTexSize);
+        ImGui::Text("GPU Max Texture Size: %d x %d", maxTexSize, maxTexSize);
+        ImGui::Separator();
+
+        static int filterMode = 0; 
+        static int wrapMode   = 0; 
+
+        const char* filterOptions[] = { "Linear (Bilinear)", "Nearest (Pixelated)" };
+        const char* wrapOptions[]   = { "Repeat", "Clamp to Edge", "Mirrored Repeat" };
+
+        bool changed = false;
+        changed |= ImGui::Combo("Filter Mode", &filterMode, filterOptions, IM_ARRAYSIZE(filterOptions));
+        changed |= ImGui::Combo("Wrap Mode",   &wrapMode,   wrapOptions,   IM_ARRAYSIZE(wrapOptions));
+
+        if (changed || ImGui::Button("Apply to All Textures"))
+        {
+            GLint minF = (filterMode == 0) ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST;
+            GLint magF = (filterMode == 0) ? GL_LINEAR               : GL_NEAREST;
+            GLint wrap = (wrapMode   == 0) ? GL_REPEAT
+                       : (wrapMode   == 1) ? GL_CLAMP_TO_EDGE
+                                           : GL_MIRRORED_REPEAT;
+
+            auto applyToTex = [&](unsigned int tid) {
+                if (tid == 0) return;
+                glBindTexture(GL_TEXTURE_2D, tid);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minF);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magF);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap);
+                glBindTexture(GL_TEXTURE_2D, 0);
+            };
+
+            std::function<void(GameObject*)> walk = [&](GameObject* go) {
+                if (!go) return;
+                if (go->texture) applyToTex(go->texture->GetTextureID());
+                for (auto* child : go->GetChildren()) walk(child);
+            };
+            if (App && App->renderer)
+                for (auto* go : App->renderer->GetGameObjects()) walk(go);
+        }
+
+        ImGui::Separator();
+        ImGui::Text("Loaded Textures:");
+
+        int count = 0;
+        std::function<void(GameObject*)> countWalk = [&](GameObject* go) {
+            if (!go) return;
+            if (go->texture && go->texture->GetTextureID() != 0)
+            {
+                ++count;
+                ImGui::BulletText("%s (%dx%d, %dch)",
+                    go->texture->GetPath().c_str(),
+                    go->texture->GetWidth(), go->texture->GetHeight(),
+                    go->texture->GetChannels());
+            }
+            for (auto* child : go->GetChildren()) countWalk(child);
+        };
+        if (App && App->renderer)
+            for (auto* go : App->renderer->GetGameObjects()) countWalk(go);
+        if (count == 0)
+            ImGui::TextDisabled("No textures loaded.");
+    }
+
     if (ImGui::CollapsingHeader("Hardware & Software", ImGuiTreeNodeFlags_DefaultOpen))
     {
         int sdlVer = SDL_GetVersion();
         ImGui::Text("SDL Version: %d.%d.%d", SDL_VERSIONNUM_MAJOR(sdlVer), SDL_VERSIONNUM_MINOR(sdlVer), SDL_VERSIONNUM_MICRO(sdlVer));
+
+        ILint devilVer = ilGetInteger(IL_VERSION_NUM);
+        int devILMajor = devilVer / 100;
+        int devILMinor = (devilVer / 10) % 10;
+        int devILPatch = devilVer % 10;
+        ImGui::Text("DevIL Version: %d.%d.%d", devILMajor, devILMinor, devILPatch);
         ImGui::Separator();
 
         ImGui::Text("CPUs: %d Cores", SDL_GetNumLogicalCPUCores());
         ImGui::Text("CPU Cache Line: %d bytes", SDL_GetCPUCacheLineSize());
         ImGui::Text("System RAM: %d MB", SDL_GetSystemRAM());
+
+#if defined(_WIN32)
+        PROCESS_MEMORY_COUNTERS pmc;
+        if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
+        {
+            ImGui::Text("Process RAM: %.2f MB", pmc.WorkingSetSize / (1024.0f * 1024.0f));
+        }
+#elif defined(__linux__)
+        struct rusage usage;
+        if (getrusage(RUSAGE_SELF, &usage) == 0)
+        {
+            ImGui::Text("Process RAM: %.2f MB", usage.ru_maxrss / 1024.0f);
+        }
+#endif
         ImGui::Separator();
 
         const char* glVendor = (const char*)glGetString(GL_VENDOR);
@@ -1301,6 +1433,7 @@ void ModuleEditor::DrawAboutWindow()
     ImGui::BulletText("SDL3 v%d.%d.%d", SDL_VERSIONNUM_MAJOR(sdlVer), SDL_VERSIONNUM_MINOR(sdlVer), SDL_VERSIONNUM_MICRO(sdlVer));
     ImGui::BulletText("OpenGL 4.6 (glad)");
     ImGui::BulletText("Dear ImGui %s", IMGUI_VERSION);
+    ImGui::BulletText("DevIL (Developer's Image Library)");
     ImGui::BulletText("Assimp (Open Asset Import Library)");
     ImGui::BulletText("GLM (OpenGL Mathematics)");
     ImGui::BulletText("stb_image");

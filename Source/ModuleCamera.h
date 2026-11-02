@@ -48,6 +48,8 @@ public:
     float sensitivity = 0.15f;
     float zoomSpeed = 1.5f;
     float panSpeed = 6.0f;
+    bool invertX = false;
+    bool invertY = false;
 
     float fov = 45.0f;
     float nearPlane = 0.1f;
