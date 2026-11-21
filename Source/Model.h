@@ -18,6 +18,10 @@ public:
     void CleanUp();
 
     static GameObject* LoadToGameObject(const std::string& path, GameObject* parent = nullptr);
+    static bool ExportToCustomFormat(const std::string& sourceModelPath,
+                                     const std::string& outputDir,
+                                     std::string& outModelFile);
+    static GameObject* LoadFromCustomModel(const std::string& customModelPath, GameObject* parent = nullptr);
 
     const std::vector<Mesh>& GetMeshes() const { return meshes; }
     const std::string& GetPath() const { return modelPath; }

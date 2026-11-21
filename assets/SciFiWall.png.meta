@@ -1,0 +1,21 @@
+{
+    "uid": 16949598288705847845,
+    "type": 1,
+    "assetPath": "assets/SciFiWall.png",
+    "lastModified": 18446744069065359979,
+    "textureOptions": {
+        "flipY": true,
+        "flipX": false,
+        "filterMode": 0,
+        "wrapMode": 0
+    },
+    "meshOptions": {
+        "globalScale": 1.0,
+        "ignoreCameras": true,
+        "ignoreLights": true,
+        "axisConversion": 0
+    },
+    "generatedFiles": [
+        "Library/Textures/SciFiWall.ctex"
+    ]
+}

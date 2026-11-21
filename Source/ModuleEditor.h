@@ -50,24 +50,34 @@ public:
     void ClearScene();
     void ResetWindowLayout();
 
+    bool IsSceneWindowHovered() const { return isSceneWindowHovered; }
+    bool IsSceneWindowFocused() const { return isSceneWindowFocused; }
+    bool IsSceneWindowOpen() const { return showSceneWindow; }
+
 private:
     void HandleShortcuts();
     void ProcessPendingActions();
 
     void DrawMainMenuBar();
+    void DrawSceneWindow();
     void DrawConfigurationWindow();
     void DrawConsoleWindow();
     void DrawHierarchyWindow();
     void DrawInspectorWindow();
+    void DrawResourcesWindow();
     void DrawAboutWindow();
     void DrawImportModelModal();
 
+    bool showSceneWindow = true;
+    bool isSceneWindowHovered = false;
+    bool isSceneWindowFocused = false;
     bool showConfigWindow = true;
     bool showAboutWindow = false;
     bool needResetLayout = true;
     bool showConsoleWindow = true;
     bool showHierarchyWindow = true;
     bool showInspectorWindow = true;
+    bool showResourcesWindow = true;
 
     // Track display size to auto-relayout on window resize
     float lastDisplayW = 0.0f;

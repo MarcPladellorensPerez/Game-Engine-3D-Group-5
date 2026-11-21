@@ -7,6 +7,8 @@
 
 class ComponentMesh : public Component {
 public:
+    static constexpr ComponentType StaticType = ComponentType::MESH;
+
     ComponentMesh(GameObject* owner);
     virtual ~ComponentMesh();
 
@@ -21,7 +23,18 @@ public:
     size_t GetIndexCount() const { return indices.size(); }
     size_t GetTriangleCount() const { return indices.empty() ? (vertices.size() / 3) : (indices.size() / 3); }
 
+    const glm::vec3& GetAABBMin() const { return aabbMin; }
+    const glm::vec3& GetAABBMax() const { return aabbMax; }
+
+    bool LoadFromCustomFile(const std::string& filePath);
+    bool SaveToCustomFile(const std::string& filePath) const;
+
+    void SetResourceMesh(uint64_t uid);
+    void SetResourceMesh(const std::string& libraryPath);
+    uint64_t GetMeshUID() const { return meshUID; }
+
     std::string meshName = "Mesh";
+    std::string customFilePath = "";
     bool showNormalsPerFace = false;
     bool showNormalsPerVertex = false;
 
@@ -37,6 +50,10 @@ private:
 
     std::vector<Vertex> vertices;
     std::vector<unsigned int> indices;
+
+    glm::vec3 aabbMin{0.0f};
+    glm::vec3 aabbMax{0.0f};
+    uint64_t meshUID = 0;
 
     unsigned int VAO = 0, VBO = 0, EBO = 0;
 

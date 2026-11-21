@@ -1,0 +1,25 @@
+{
+    "uid": 10427715560542436130,
+    "type": 2,
+    "assetPath": "assets/SciFiWall.fbx",
+    "lastModified": 18446744069065359972,
+    "textureOptions": {
+        "flipY": true,
+        "flipX": false,
+        "filterMode": 0,
+        "wrapMode": 0
+    },
+    "meshOptions": {
+        "globalScale": 1.0,
+        "ignoreCameras": true,
+        "ignoreLights": true,
+        "axisConversion": 0
+    },
+    "generatedFiles": [
+        "Library/Models/SciFiWall.cmodel",
+        "Library/Meshes/Wall.cmesh",
+        "Library/Meshes/Tube1.cmesh",
+        "Library/Meshes/Tube2.cmesh",
+        "Library/Meshes/Tube3.cmesh"
+    ]
+}

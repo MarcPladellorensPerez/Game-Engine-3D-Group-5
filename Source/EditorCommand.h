@@ -6,6 +6,7 @@
 #include "Application.h"
 #include "ModuleRender.h"
 #include "GameObject.h"
+#include "ComponentTransform.h"
 
 class EditorCommand
 {
@@ -156,21 +157,29 @@ public:
 
     void Execute() override
     {
-        if (gameObject && gameObject->transform)
+        if (gameObject)
         {
-            gameObject->transform->position = newPosition;
-            gameObject->transform->rotation = newRotation;
-            gameObject->transform->scale = newScale;
+            ComponentTransform* transform = gameObject->GetComponent<ComponentTransform>();
+            if (transform)
+            {
+                transform->position = newPosition;
+                transform->rotation = newRotation;
+                transform->scale = newScale;
+            }
         }
     }
 
     void Undo() override
     {
-        if (gameObject && gameObject->transform)
+        if (gameObject)
         {
-            gameObject->transform->position = oldPosition;
-            gameObject->transform->rotation = oldRotation;
-            gameObject->transform->scale = oldScale;
+            ComponentTransform* transform = gameObject->GetComponent<ComponentTransform>();
+            if (transform)
+            {
+                transform->position = oldPosition;
+                transform->rotation = oldRotation;
+                transform->scale = oldScale;
+            }
         }
     }
 

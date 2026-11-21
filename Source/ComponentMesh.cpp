@@ -2,6 +2,8 @@
 #define _USE_MATH_DEFINES
 #endif
 #include "ComponentMesh.h"
+#include "CustomFormat.h"
+#include "ResourceManager.h"
 #include <glad/glad.h>
 #include <cmath>
 
@@ -24,9 +26,20 @@ ComponentMesh::~ComponentMesh()
 
 void ComponentMesh::CleanUp()
 {
-    if (VAO != 0) { glDeleteVertexArrays(1, &VAO); VAO = 0; }
-    if (VBO != 0) { glDeleteBuffers(1, &VBO); VBO = 0; }
-    if (EBO != 0) { glDeleteBuffers(1, &EBO); EBO = 0; }
+    if (meshUID != 0)
+    {
+        ResourceManager::Instance().ReleaseMesh(meshUID);
+        meshUID = 0;
+        VAO = 0;
+        VBO = 0;
+        EBO = 0;
+    }
+    else
+    {
+        if (VAO != 0) { glDeleteVertexArrays(1, &VAO); VAO = 0; }
+        if (VBO != 0) { glDeleteBuffers(1, &VBO); VBO = 0; }
+        if (EBO != 0) { glDeleteBuffers(1, &EBO); EBO = 0; }
+    }
 
     if (vertexNormalsVAO != 0) { glDeleteVertexArrays(1, &vertexNormalsVAO); vertexNormalsVAO = 0; }
     if (vertexNormalsVBO != 0) { glDeleteBuffers(1, &vertexNormalsVBO); vertexNormalsVBO = 0; }
@@ -40,12 +53,66 @@ void ComponentMesh::CleanUp()
     faceNormalsCount = 0;
 }
 
+void ComponentMesh::SetResourceMesh(uint64_t uid)
+{
+    CleanUp();
+    ResourceMesh* res = ResourceManager::Instance().RequestMesh(uid);
+    if (res)
+    {
+        meshUID = res->uid;
+        meshName = res->name;
+        aabbMin = res->aabbMin;
+        aabbMax = res->aabbMax;
+        VAO = res->VAO;
+        VBO = res->VBO;
+        EBO = res->EBO;
+        vertices = res->vertices;
+        indices = res->indices;
+        GenerateNormalsBuffers();
+    }
+}
+
+void ComponentMesh::SetResourceMesh(const std::string& libraryPath)
+{
+    CleanUp();
+    ResourceMesh* res = ResourceManager::Instance().RequestMeshByPath(libraryPath);
+    if (res)
+    {
+        meshUID = res->uid;
+        meshName = res->name;
+        aabbMin = res->aabbMin;
+        aabbMax = res->aabbMax;
+        VAO = res->VAO;
+        VBO = res->VBO;
+        EBO = res->EBO;
+        vertices = res->vertices;
+        indices = res->indices;
+        GenerateNormalsBuffers();
+    }
+}
+
 void ComponentMesh::InitBuffers(const std::vector<Vertex>& verts, const std::vector<unsigned int>& inds)
 {
     CleanUp();
 
     vertices = verts;
     indices = inds;
+
+    if (!vertices.empty())
+    {
+        aabbMin = vertices[0].Position;
+        aabbMax = vertices[0].Position;
+        for (const auto& v : vertices)
+        {
+            aabbMin = glm::min(aabbMin, v.Position);
+            aabbMax = glm::max(aabbMax, v.Position);
+        }
+    }
+    else
+    {
+        aabbMin = glm::vec3(0.0f);
+        aabbMax = glm::vec3(0.0f);
+    }
 
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
@@ -412,4 +479,35 @@ void ComponentMesh::CreateTriangle(float size)
     };
     std::vector<unsigned int> inds = { 0, 1, 2 };
     InitBuffers(verts, inds);
+}
+
+bool ComponentMesh::LoadFromCustomFile(const std::string& filePath)
+{
+    SetResourceMesh(filePath);
+    if (meshUID != 0)
+    {
+        customFilePath = filePath;
+        return true;
+    }
+
+    std::vector<Vertex> loadedVerts;
+    std::vector<unsigned int> loadedInds;
+    glm::vec3 minP(0.0f), maxP(0.0f);
+
+    if (CustomFormat::LoadMesh(filePath, loadedVerts, loadedInds, minP, maxP))
+    {
+        InitBuffers(loadedVerts, loadedInds);
+        aabbMin = minP;
+        aabbMax = maxP;
+        customFilePath = filePath;
+        size_t lastSlash = filePath.find_last_of("/\\");
+        meshName = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
+        return true;
+    }
+    return false;
+}
+
+bool ComponentMesh::SaveToCustomFile(const std::string& filePath) const
+{
+    return CustomFormat::SaveMesh(filePath, vertices, indices, aabbMin, aabbMax);
 }

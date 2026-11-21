@@ -4,6 +4,8 @@
 
 class ComponentTransform : public Component {
 public:
+    static constexpr ComponentType StaticType = ComponentType::TRANSFORM;
+
     ComponentTransform(GameObject* owner);
     virtual ~ComponentTransform();
 

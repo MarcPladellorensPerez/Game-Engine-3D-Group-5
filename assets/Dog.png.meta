@@ -1,0 +1,21 @@
+{
+    "uid": 9564504257938452791,
+    "type": 1,
+    "assetPath": "assets/Dog.png",
+    "lastModified": 18446744069065362838,
+    "textureOptions": {
+        "flipY": true,
+        "flipX": false,
+        "filterMode": 0,
+        "wrapMode": 0
+    },
+    "meshOptions": {
+        "globalScale": 1.0,
+        "ignoreCameras": true,
+        "ignoreLights": true,
+        "axisConversion": 0
+    },
+    "generatedFiles": [
+        "Library/Textures/Dog.ctex"
+    ]
+}

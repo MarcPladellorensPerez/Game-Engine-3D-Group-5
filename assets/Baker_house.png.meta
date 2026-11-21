@@ -1,0 +1,21 @@
+{
+    "uid": 13783051562421362234,
+    "type": 1,
+    "assetPath": "assets/Baker_house.png",
+    "lastModified": 18446744069064931464,
+    "textureOptions": {
+        "flipY": true,
+        "flipX": false,
+        "filterMode": 0,
+        "wrapMode": 0
+    },
+    "meshOptions": {
+        "globalScale": 1.0,
+        "ignoreCameras": true,
+        "ignoreLights": true,
+        "axisConversion": 0
+    },
+    "generatedFiles": [
+        "Library/Textures/Baker_house.ctex"
+    ]
+}

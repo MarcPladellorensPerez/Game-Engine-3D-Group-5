@@ -3,6 +3,7 @@
 #include "ModuleCamera.h"
 #include "ModuleRender.h"
 #include "ModuleEditor.h"
+#include "Metadata.h"
 #include <vector>
 #include <string>
 #include <cstdio>
@@ -71,6 +72,8 @@ bool Application::Init()
     {
         if (!module->Init()) return false;
     }
+
+    MetaManager::ScanAssetsAndSyncLibrary("assets", "Library");
 
     return true;
 }

@@ -1,18 +1,17 @@
 #include "GameObject.h"
+#include "ComponentTransform.h"
+#include "ComponentMesh.h"
+#include "ComponentTexture.h"
 #include <glad/glad.h>
 #include <algorithm>
 
 GameObject::GameObject(const std::string& name, GameObject* parent)
     : name(name), parent(parent), active(true)
 {
-    transform = new ComponentTransform(this);
+    // Empty GameObjects only have Transform by default.
+    // Mesh and Texture components are added on demand.
+    ComponentTransform* transform = new ComponentTransform(this);
     components.push_back(transform);
-
-    mesh = new ComponentMesh(this);
-    components.push_back(mesh);
-
-    texture = new ComponentTexture(this);
-    components.push_back(texture);
 
     if (parent)
     {
@@ -32,6 +31,8 @@ GameObject::~GameObject()
 
 void GameObject::CleanUp()
 {
+    if (components.empty() && children.empty()) return; // Guard against double CleanUp
+
     for (GameObject* child : children)
     {
         if (child)
@@ -44,14 +45,23 @@ void GameObject::CleanUp()
 
     for (Component* comp : components)
     {
-        comp->CleanUp();
-        delete comp;
+        if (comp)
+        {
+            comp->CleanUp();
+            delete comp;
+        }
     }
     components.clear();
+}
 
-    transform = nullptr;
-    mesh = nullptr;
-    texture = nullptr;
+ComponentTransform* GameObject::GetTransform()
+{
+    return GetComponent<ComponentTransform>();
+}
+
+const ComponentTransform* GameObject::GetTransform() const
+{
+    return GetComponent<ComponentTransform>();
 }
 
 void GameObject::AddChild(GameObject* child)
@@ -109,35 +119,47 @@ GameObject* GameObject::Clone(GameObject* newParent, bool appendCopySuffix)
     GameObject* copy = new GameObject(cloneName, newParent);
     copy->active = this->active;
 
-    if (this->transform && copy->transform)
+    ComponentTransform* srcTransform = GetComponent<ComponentTransform>();
+    ComponentTransform* copyTransform = copy->GetComponent<ComponentTransform>();
+    if (srcTransform && copyTransform)
     {
-        copy->transform->position = this->transform->position;
-        copy->transform->rotation = this->transform->rotation;
-        copy->transform->scale = this->transform->scale;
+        copyTransform->position = srcTransform->position;
+        copyTransform->rotation = srcTransform->rotation;
+        copyTransform->scale = srcTransform->scale;
     }
 
-    if (this->mesh && copy->mesh)
+    ComponentMesh* srcMesh = GetComponent<ComponentMesh>();
+    if (srcMesh)
     {
-        copy->mesh->meshName = this->mesh->meshName;
-        copy->mesh->showNormalsPerFace = this->mesh->showNormalsPerFace;
-        copy->mesh->showNormalsPerVertex = this->mesh->showNormalsPerVertex;
-        if (this->mesh->GetVertexCount() > 0)
+        ComponentMesh* copyMesh = static_cast<ComponentMesh*>(copy->CreateComponent(ComponentType::MESH));
+        if (copyMesh)
         {
-            copy->mesh->InitBuffers(this->mesh->GetVertices(), this->mesh->GetIndices());
+            copyMesh->meshName = srcMesh->meshName;
+            copyMesh->showNormalsPerFace = srcMesh->showNormalsPerFace;
+            copyMesh->showNormalsPerVertex = srcMesh->showNormalsPerVertex;
+            if (srcMesh->GetVertexCount() > 0)
+            {
+                copyMesh->InitBuffers(srcMesh->GetVertices(), srcMesh->GetIndices());
+            }
         }
     }
 
-    if (this->texture && copy->texture)
+    ComponentTexture* srcTexture = GetComponent<ComponentTexture>();
+    if (srcTexture)
     {
-        copy->texture->showChecker = this->texture->showChecker;
-        if (this->texture->GetPath() != "None" && !this->texture->GetPath().empty())
+        ComponentTexture* copyTexture = static_cast<ComponentTexture*>(copy->CreateComponent(ComponentType::TEXTURE));
+        if (copyTexture)
         {
-            copy->texture->LoadTexture(this->texture->GetPath());
-        }
-        else if (this->texture->GetTextureID() != 0)
-        {
-            copy->texture->SetTexture(this->texture->GetTextureID(), this->texture->GetPath(),
-                                     this->texture->GetWidth(), this->texture->GetHeight());
+            copyTexture->showChecker = srcTexture->showChecker;
+            if (srcTexture->GetPath() != "None" && !srcTexture->GetPath().empty())
+            {
+                copyTexture->LoadTexture(srcTexture->GetPath());
+            }
+            else if (srcTexture->GetTextureID() != 0)
+            {
+                copyTexture->SetTexture(srcTexture->GetTextureID(), srcTexture->GetPath(),
+                                         srcTexture->GetWidth(), srcTexture->GetHeight());
+            }
         }
     }
 
@@ -158,24 +180,21 @@ Component* GameObject::CreateComponent(ComponentType type)
     switch (type)
     {
     case ComponentType::TRANSFORM:
-        if (!transform)
+        if (!GetComponent<ComponentTransform>())
         {
-            transform = new ComponentTransform(this);
-            newComp = transform;
+            newComp = new ComponentTransform(this);
         }
         break;
     case ComponentType::MESH:
-        if (!mesh)
+        if (!GetComponent<ComponentMesh>())
         {
-            mesh = new ComponentMesh(this);
-            newComp = mesh;
+            newComp = new ComponentMesh(this);
         }
         break;
     case ComponentType::TEXTURE:
-        if (!texture)
+        if (!GetComponent<ComponentTexture>())
         {
-            texture = new ComponentTexture(this);
-            newComp = texture;
+            newComp = new ComponentTexture(this);
         }
         break;
     }
@@ -187,11 +206,35 @@ Component* GameObject::CreateComponent(ComponentType type)
     return newComp;
 }
 
-void GameObject::SetTexture(const std::string& texturePath)
+void GameObject::RemoveComponent(Component* comp)
 {
-    if (texture)
+    if (!comp) return;
+
+    // Do not allow removing the root transform component
+    if (comp->GetType() == ComponentType::TRANSFORM) return;
+
+    auto it = std::find(components.begin(), components.end(), comp);
+    if (it != components.end())
     {
-        texture->LoadTexture(texturePath);
+        comp->CleanUp();
+        delete comp;
+        components.erase(it);
+    }
+}
+
+void GameObject::RemoveComponent(ComponentType type)
+{
+    if (type == ComponentType::TRANSFORM) return;
+
+    for (auto it = components.begin(); it != components.end(); ++it)
+    {
+        if ((*it) && (*it)->GetType() == type)
+        {
+            (*it)->CleanUp();
+            delete *it;
+            components.erase(it);
+            return;
+        }
     }
 }
 
@@ -212,46 +255,6 @@ void GameObject::Update()
         if (child)
         {
             child->Update();
-        }
-    }
-}
-
-void GameObject::Draw(unsigned int shaderProgram, unsigned int checkerTextureID)
-{
-    if (!active) return;
-
-    if (transform && mesh && mesh->GetVertexCount() > 0)
-    {
-        glm::mat4 modelMatrix = transform->GetGlobalMatrix();
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, &modelMatrix[0][0]);
-
-        bool useTexture = false;
-        if (texture && texture->showChecker && checkerTextureID != 0)
-        {
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, checkerTextureID);
-            glUniform1i(glGetUniformLocation(shaderProgram, "texture_diffuse1"), 0);
-            useTexture = true;
-        }
-        else if (texture && texture->GetTextureID() != 0)
-        {
-            texture->Bind(0);
-            glUniform1i(glGetUniformLocation(shaderProgram, "texture_diffuse1"), 0);
-            useTexture = true;
-        }
-
-        glUniform1i(glGetUniformLocation(shaderProgram, "useTexture"), useTexture ? 1 : 0);
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.75f, 0.75f, 0.75f);
-
-        mesh->Draw(shaderProgram);
-        mesh->DrawNormals(shaderProgram, modelMatrix);
-    }
-
-    for (GameObject* child : children)
-    {
-        if (child)
-        {
-            child->Draw(shaderProgram, checkerTextureID);
         }
     }
 }

@@ -4,7 +4,11 @@
 #include "ModuleCamera.h"
 #include "Model.h"
 #include "Shader.h"
+#include "ComponentTransform.h"
+#include "ComponentMesh.h"
+#include "ComponentTexture.h"
 #include <glm/gtc/matrix_transform.hpp>
+#include <filesystem>
 
 // Fallback shader sources
 static const char* fallbackVertexShader = R"(#version 460 core
@@ -64,6 +68,49 @@ void main()
 )";
 
 #include "GameObject.h"
+
+void ModuleRender::DrawGameObject(GameObject* go, unsigned int shaderProgram, unsigned int checkerTexID, bool globalShowChecker)
+{
+    if (!go || !go->IsActive()) return;
+
+    ComponentTransform* transform = go->GetComponent<ComponentTransform>();
+    ComponentMesh* mesh = go->GetComponent<ComponentMesh>();
+    ComponentTexture* texture = go->GetComponent<ComponentTexture>();
+
+    if (transform && mesh && mesh->GetVertexCount() > 0)
+    {
+        glm::mat4 modelMatrix = transform->GetGlobalMatrix();
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, &modelMatrix[0][0]);
+
+        bool useTexture = false;
+        bool useChecker = globalShowChecker || (texture && texture->showChecker);
+
+        if (useChecker && checkerTexID != 0)
+        {
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, checkerTexID);
+            glUniform1i(glGetUniformLocation(shaderProgram, "texture_diffuse1"), 0);
+            useTexture = true;
+        }
+        else if (texture && texture->GetTextureID() != 0)
+        {
+            texture->Bind(0);
+            glUniform1i(glGetUniformLocation(shaderProgram, "texture_diffuse1"), 0);
+            useTexture = true;
+        }
+
+        glUniform1i(glGetUniformLocation(shaderProgram, "useTexture"), useTexture ? 1 : 0);
+        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.75f, 0.75f, 0.75f);
+
+        mesh->Draw(shaderProgram);
+        mesh->DrawNormals(shaderProgram, modelMatrix);
+    }
+
+    for (GameObject* child : go->GetChildren())
+    {
+        DrawGameObject(child, shaderProgram, checkerTexID, globalShowChecker);
+    }
+}
 
 ModuleRender::ModuleRender() {}
 ModuleRender::~ModuleRender() {}
@@ -170,12 +217,17 @@ GameObject* ModuleRender::CreatePrimitive(const std::string& type, GameObject* p
 {
     std::string name = type + " " + std::to_string(gameObjects.size() + 1);
     GameObject* go = new GameObject(name, parent);
-    if (type == "Cube") go->mesh->CreateCube();
-    else if (type == "Plane" || type == "Plane / Quad") go->mesh->CreatePlane();
-    else if (type == "Sphere") go->mesh->CreateSphere();
-    else if (type == "Cylinder") go->mesh->CreateCylinder();
-    else if (type == "Pyramid") go->mesh->CreatePyramid();
-    else if (type == "Triangle") go->mesh->CreateTriangle();
+    ComponentMesh* mesh = static_cast<ComponentMesh*>(go->CreateComponent(ComponentType::MESH));
+    if (mesh)
+    {
+        if (type == "Cube") mesh->CreateCube();
+        else if (type == "Plane" || type == "Plane / Quad") mesh->CreatePlane();
+        else if (type == "Sphere") mesh->CreateSphere();
+        else if (type == "Cylinder") mesh->CreateCylinder();
+        else if (type == "Pyramid") mesh->CreatePyramid();
+        else if (type == "Triangle") mesh->CreateTriangle();
+        mesh->meshName = type;
+    }
 
     if (!parent)
     {
@@ -188,7 +240,29 @@ GameObject* ModuleRender::CreatePrimitive(const std::string& type, GameObject* p
 
 GameObject* ModuleRender::LoadModel(const std::string& path)
 {
-    GameObject* newObj = Model::LoadToGameObject(path);
+    std::filesystem::path p(path);
+    std::string ext = p.extension().string();
+    for (char& c : ext) c = static_cast<char>(tolower(c));
+
+    GameObject* newObj = nullptr;
+    if (ext == ".cmodel")
+    {
+        newObj = Model::LoadFromCustomModel(path);
+    }
+    else
+    {
+        std::string customModelFile;
+        if (Model::ExportToCustomFormat(path, "Library", customModelFile))
+        {
+            LOG("[ModuleRender] Converted %s to custom format: %s", path.c_str(), customModelFile.c_str());
+            newObj = Model::LoadFromCustomModel(customModelFile);
+        }
+        else
+        {
+            newObj = Model::LoadToGameObject(path);
+        }
+    }
+
     if (!newObj)
     {
         return nullptr;
@@ -214,10 +288,23 @@ void ModuleRender::ApplyTextureToSelected(const std::string& texturePath)
         return;
     }
 
-    target->SetTexture(texturePath);
+    auto applyTexToGO = [&](GameObject* go) {
+        if (!go) return;
+        ComponentTexture* tex = go->GetComponent<ComponentTexture>();
+        if (!tex)
+        {
+            tex = static_cast<ComponentTexture*>(go->CreateComponent(ComponentType::TEXTURE));
+        }
+        if (tex)
+        {
+            tex->LoadTexture(texturePath);
+        }
+    };
+
+    applyTexToGO(target);
     for (GameObject* child : target->GetChildren())
     {
-        child->SetTexture(texturePath);
+        applyTexToGO(child);
     }
     LOG("Applied texture '%s' to GameObject '%s'", texturePath.c_str(), target->GetName().c_str());
 }
@@ -249,6 +336,7 @@ bool ModuleRender::Init()
 
     CreateCheckerTexture();
     CreateGridBuffers();
+    CreateSceneFBO(sceneWidth, sceneHeight);
 
     // Baker_house loaded automatically at startup
     LoadModel("assets/BakerHouse.fbx");
@@ -383,12 +471,79 @@ void ModuleRender::CreateCheckerTexture()
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-UpdateStatus ModuleRender::PreUpdate()
+bool ModuleRender::CreateSceneFBO(int width, int height)
 {
+    if (width <= 0 || height <= 0) return false;
+    DestroySceneFBO();
+
+    sceneWidth = width;
+    sceneHeight = height;
+
+    glGenFramebuffers(1, &sceneFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, sceneFBO);
+
+    glGenTextures(1, &sceneColorTexture);
+    glBindTexture(GL_TEXTURE_2D, sceneColorTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sceneColorTexture, 0);
+
+    glGenRenderbuffers(1, &sceneDepthRBO);
+    glBindRenderbuffer(GL_RENDERBUFFER, sceneDepthRBO);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, sceneDepthRBO);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    {
+        LOG("[ModuleRender] ERROR: Scene Framebuffer is incomplete!");
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return false;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return true;
+}
+
+void ModuleRender::DestroySceneFBO()
+{
+    if (sceneFBO != 0)
+    {
+        glDeleteFramebuffers(1, &sceneFBO);
+        sceneFBO = 0;
+    }
+    if (sceneColorTexture != 0)
+    {
+        glDeleteTextures(1, &sceneColorTexture);
+        sceneColorTexture = 0;
+    }
+    if (sceneDepthRBO != 0)
+    {
+        glDeleteRenderbuffers(1, &sceneDepthRBO);
+        sceneDepthRBO = 0;
+    }
+}
+
+void ModuleRender::BindSceneFBO()
+{
+    glBindFramebuffer(GL_FRAMEBUFFER, sceneFBO);
+    glViewport(0, 0, sceneWidth, sceneHeight);
+}
+
+void ModuleRender::UnbindSceneFBO()
+{
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     if (App && App->window)
     {
         glViewport(0, 0, App->window->GetWidth(), App->window->GetHeight());
     }
+}
+
+UpdateStatus ModuleRender::PreUpdate()
+{
+    BindSceneFBO();
 
     glClearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -433,12 +588,14 @@ UpdateStatus ModuleRender::Update()
         {
             if (go)
             {
-                go->Draw(defaultShader->GetProgramID(), showCheckerTexture ? checkerTextureID : 0);
+                DrawGameObject(go, defaultShader->GetProgramID(), checkerTextureID, showCheckerTexture);
             }
         }
 
         defaultShader->Unuse();
     }
+
+    UnbindSceneFBO();
 
     return UPDATE_CONTINUE;
 }
@@ -460,6 +617,7 @@ bool ModuleRender::CleanUp()
     selectedGameObject = nullptr;
 
     DestroyGridBuffers();
+    DestroySceneFBO();
 
     if (checkerTextureID != 0)
     {

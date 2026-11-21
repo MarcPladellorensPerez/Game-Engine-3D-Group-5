@@ -1,10 +1,13 @@
 #include "ComponentTexture.h"
+#include "CustomFormat.h"
+#include "ResourceManager.h"
 #include "Globals.h"
 #include <glad/glad.h>
 #include <IL/il.h>
 #include <IL/ilu.h>
 #include <stb_image.h>
 #include <iostream>
+#include <filesystem>
 
 static bool devILInitialized = false;
 
@@ -31,12 +34,48 @@ ComponentTexture::~ComponentTexture()
 
 void ComponentTexture::CleanUp()
 {
-    if (ownsTexture && textureID != 0)
+    if (textureUID != 0)
+    {
+        ResourceManager::Instance().ReleaseTexture(textureUID);
+        textureUID = 0;
+        textureID = 0;
+    }
+    else if (ownsTexture && textureID != 0)
     {
         glDeleteTextures(1, &textureID);
         textureID = 0;
     }
     ownsTexture = false;
+}
+
+void ComponentTexture::SetResourceTexture(uint64_t uid)
+{
+    CleanUp();
+    ResourceTexture* res = ResourceManager::Instance().RequestTexture(uid);
+    if (res)
+    {
+        textureUID = res->uid;
+        textureID = res->textureID;
+        width = res->width;
+        height = res->height;
+        channels = res->channels;
+        path = res->assetsPath.empty() ? res->libraryPath : res->assetsPath;
+    }
+}
+
+void ComponentTexture::SetResourceTexture(const std::string& libraryOrAssetPath)
+{
+    CleanUp();
+    ResourceTexture* res = ResourceManager::Instance().RequestTextureByPath(libraryOrAssetPath);
+    if (res)
+    {
+        textureUID = res->uid;
+        textureID = res->textureID;
+        width = res->width;
+        height = res->height;
+        channels = res->channels;
+        path = res->assetsPath.empty() ? res->libraryPath : res->assetsPath;
+    }
 }
 
 void ComponentTexture::SetTexture(unsigned int id, const std::string& filepath, int w, int h)
@@ -51,20 +90,35 @@ void ComponentTexture::SetTexture(unsigned int id, const std::string& filepath, 
 
 bool ComponentTexture::LoadTexture(const std::string& filepath)
 {
+    // Check ResourceManager cache first to reuse existing GPU texture and ref count
+    ResourceTexture* res = ResourceManager::Instance().RequestTextureByPath(filepath);
+    if (res && res->textureID != 0)
+    {
+        CleanUp();
+        textureUID = res->uid;
+        textureID = res->textureID;
+        width = res->width;
+        height = res->height;
+        channels = res->channels;
+        path = res->assetsPath.empty() ? res->libraryPath : res->assetsPath;
+        ownsTexture = false;
+        return true;
+    }
+
     EnsureDevILInit();
     CleanUp();
 
     std::string finalPath = filepath;
-
-    FILE* f = fopen(finalPath.c_str(), "rb");
-    if (!f)
+    if (!std::filesystem::exists(finalPath))
     {
         size_t lastSlash = filepath.find_last_of("/\\");
         std::string baseName = (lastSlash != std::string::npos) ? filepath.substr(lastSlash + 1) : filepath;
-        finalPath = "assets/" + baseName;
-        f = fopen(finalPath.c_str(), "rb");
+        std::string alt = "assets/" + baseName;
+        if (std::filesystem::exists(alt))
+        {
+            finalPath = alt;
+        }
     }
-    if (f) fclose(f);
 
     // Load with DevIL (supports DDS, PNG, TGA, JPG, etc.)
     ILuint imgId = 0;
@@ -94,7 +148,7 @@ bool ComponentTexture::LoadTexture(const std::string& filepath)
 
         width = w;
         height = h;
-        channels = comp;
+        channels = 4; // stbi_load was called with req_comp=4, output is always RGBA
         path = finalPath;
         ownsTexture = true;
 
@@ -127,7 +181,7 @@ bool ComponentTexture::LoadTexture(const std::string& filepath)
 
         width = w;
         height = h;
-        channels = comp;
+        channels = 4; // stbi_load was called with req_comp=4, output is always RGBA
         path = finalPath;
         ownsTexture = true;
 
@@ -149,4 +203,54 @@ void ComponentTexture::Unbind(unsigned int slot)
 {
     glActiveTexture(GL_TEXTURE0 + slot);
     glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+bool ComponentTexture::LoadFromCustomFile(const std::string& filepath)
+{
+    SetResourceTexture(filepath);
+    if (textureUID != 0) return true;
+
+    CleanUp();
+
+    int w = 0, h = 0, c = 0;
+    std::vector<unsigned char> data;
+    if (!CustomFormat::LoadTexture(filepath, w, h, c, data) || data.empty())
+    {
+        LOG("[ComponentTexture] Failed to load custom texture: %s", filepath.c_str());
+        return false;
+    }
+
+    GLenum format = (c == 4) ? GL_RGBA : GL_RGB;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glTexImage2D(GL_TEXTURE_2D, 0, format, w, h, 0, format, GL_UNSIGNED_BYTE, data.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    width = w;
+    height = h;
+    channels = c;
+    path = filepath;
+    ownsTexture = true;
+
+    LOG("[ComponentTexture] Loaded custom binary texture: %s (%dx%d, %d channels)",
+        filepath.c_str(), width, height, channels);
+    return true;
+}
+
+bool ComponentTexture::SaveToCustomFile(const std::string& filepath) const
+{
+    if (textureID == 0 || width <= 0 || height <= 0) return false;
+
+    std::vector<unsigned char> pixels(width * height * 4);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    return CustomFormat::SaveTexture(filepath, width, height, 4, pixels.data());
 }

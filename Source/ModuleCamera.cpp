@@ -2,6 +2,8 @@
 #include "Application.h"
 #include "ModuleWindow.h"
 #include "ModuleRender.h"
+#include "ModuleEditor.h"
+#include "ComponentTransform.h"
 #include <SDL3/SDL.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <imgui.h>
@@ -88,9 +90,13 @@ void ModuleCamera::FocusOnModel()
             targetGO = App->renderer->GetGameObjects().front();
         }
 
-        if (targetGO && targetGO->transform)
+        if (targetGO)
         {
-            target = targetGO->transform->position + glm::vec3(0.0f, 2.0f, 0.0f);
+            ComponentTransform* transform = targetGO->GetComponent<ComponentTransform>();
+            if (transform)
+            {
+                target = transform->position + glm::vec3(0.0f, 2.0f, 0.0f);
+            }
         }
     }
     Focus(target, 14.0f);
@@ -171,7 +177,7 @@ UpdateStatus ModuleCamera::Update()
     }
     lastCounter = nowCounter;
 
-    if (App && App->window)
+    if (App && App->window && (!App->editor || !App->editor->IsSceneWindowOpen()))
     {
         int w = App->window->GetWidth();
         int h = App->window->GetHeight();
@@ -197,9 +203,11 @@ UpdateStatus ModuleCamera::Update()
     bool lmbPressed = (mouseButtons & SDL_BUTTON_LMASK) != 0;
     bool mmbPressed = (mouseButtons & SDL_BUTTON_MMASK) != 0;
 
+    bool sceneHovered = (App && App->editor) ? App->editor->IsSceneWindowHovered() : false;
+
     if (!isFreeLooking && !isOrbiting && !isPanning)
     {
-        if (io.WantCaptureMouse)
+        if (io.WantCaptureMouse && !sceneHovered)
         {
             rmbPressed = false;
             lmbPressed = false;
@@ -277,30 +285,32 @@ UpdateStatus ModuleCamera::Update()
     }
     else if (isOrbiting)
     {
-        float angleX = -mouseX * sensitivity * (invertX ? -1.0f : 1.0f);
+        float angleX = mouseX * sensitivity * (invertX ? -1.0f : 1.0f);
         float angleY = -mouseY * sensitivity * (invertY ? -1.0f : 1.0f);
 
         glm::vec3 offset = Position - Reference;
         float dist = glm::length(offset);
-        if (dist < 0.001f)
+        if (dist < 0.01f)
         {
+            dist = 1.0f;
             offset = glm::vec3(0.0f, 0.0f, 1.0f);
         }
 
-        glm::mat4 rotY = glm::rotate(glm::mat4(1.0f), glm::radians(angleX), glm::vec3(0.0f, 1.0f, 0.0f));
-        offset = glm::vec3(rotY * glm::vec4(offset, 1.0f));
+        // Spherical coordinates around Reference: yaw (azimuth) and pitch (elevation)
+        float currentYaw = glm::degrees(atan2(offset.z, offset.x));
+        float currentPitch = glm::degrees(asin(glm::clamp(offset.y / dist, -0.999f, 0.999f)));
 
-        glm::vec3 curRight = glm::normalize(glm::cross(glm::normalize(offset), glm::vec3(0.0f, 1.0f, 0.0f)));
-        glm::mat4 rotX = glm::rotate(glm::mat4(1.0f), glm::radians(angleY), curRight);
-        glm::vec3 newOffset = glm::vec3(rotX * glm::vec4(offset, 1.0f));
+        currentYaw += angleX;
+        currentPitch += angleY;
+        currentPitch = glm::clamp(currentPitch, -89.0f, 89.0f);
 
-        glm::vec3 norm = glm::normalize(newOffset);
-        if (glm::abs(glm::dot(norm, glm::vec3(0.0f, 1.0f, 0.0f))) < 0.98f)
-        {
-            offset = newOffset;
-        }
+        // Compute new position maintaining distance
+        glm::vec3 newOffset;
+        newOffset.x = dist * cos(glm::radians(currentPitch)) * cos(glm::radians(currentYaw));
+        newOffset.y = dist * sin(glm::radians(currentPitch));
+        newOffset.z = dist * cos(glm::radians(currentPitch)) * sin(glm::radians(currentYaw));
 
-        Position = Reference + offset;
+        Position = Reference + newOffset;
         Front = glm::normalize(Reference - Position);
         Right = glm::normalize(glm::cross(Front, glm::vec3(0.0f, 1.0f, 0.0f)));
         Up = glm::normalize(glm::cross(Right, Front));
@@ -315,7 +325,7 @@ UpdateStatus ModuleCamera::Update()
         CalculateViewMatrix();
     }
 
-    if (!io.WantCaptureMouse && io.MouseWheel != 0.0f)
+    if ((!io.WantCaptureMouse || sceneHovered) && io.MouseWheel != 0.0f)
     {
         float wheelDelta = io.MouseWheel * zoomSpeed;
         glm::vec3 toRef = Reference - Position;

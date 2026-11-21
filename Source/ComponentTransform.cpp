@@ -28,9 +28,13 @@ glm::mat4 ComponentTransform::GetLocalMatrix() const
 glm::mat4 ComponentTransform::GetGlobalMatrix() const
 {
     glm::mat4 local = GetLocalMatrix();
-    if (owner && owner->GetParent() && owner->GetParent()->transform)
+    if (owner && owner->GetParent())
     {
-        return owner->GetParent()->transform->GetGlobalMatrix() * local;
+        ComponentTransform* parentTransform = owner->GetParent()->GetComponent<ComponentTransform>();
+        if (parentTransform)
+        {
+            return parentTransform->GetGlobalMatrix() * local;
+        }
     }
     return local;
 }

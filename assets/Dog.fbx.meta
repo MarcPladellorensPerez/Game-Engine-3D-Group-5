@@ -1,0 +1,26 @@
+{
+    "uid": 6641351956988939295,
+    "type": 2,
+    "assetPath": "assets/Dog.fbx",
+    "lastModified": 18446744069065362838,
+    "textureOptions": {
+        "flipY": true,
+        "flipX": false,
+        "filterMode": 0,
+        "wrapMode": 0
+    },
+    "meshOptions": {
+        "globalScale": 1.0,
+        "ignoreCameras": true,
+        "ignoreLights": true,
+        "axisConversion": 0
+    },
+    "generatedFiles": [
+        "Library/Models/Dog.cmodel",
+        "Library/Meshes/Scene.cmesh",
+        "Library/Meshes/Scene.cmesh",
+        "Library/Meshes/Scene.cmesh",
+        "Library/Meshes/Scene.cmesh",
+        "Library/Meshes/Scene.cmesh"
+    ]
+}

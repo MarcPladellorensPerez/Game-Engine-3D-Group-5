@@ -1,4 +1,4 @@
-# MotorVJ - Motor 3D - E1 - Visualizador de Geometría
+# MotorVJ - Motor 3D - E2 - Editor del Motor
 
 **MotorVJ** es un motor y visualizador de geometría 3D en tiempo real desarrollado en C++ como proyecto para la asignatura de **Motores de Videojuegos** en el CITM UPC
 
@@ -114,7 +114,7 @@ El repositorio está preparado para configurarse y compilarse automáticamente e
 ## 📝 Comentarios Técnicos para el Profesor
 
 * **Arquitectura de GameObjects y Componentes:**
-  Siguiendo las directrices explicadas en clase, la clase `GameObject` gestiona sus componentes desacoplados mediante un enumerado de tipos (`ComponentType`). Se ha prescindido deliberadamente del uso de RTTI y `dynamic_cast` en `GetComponent()`, garantizando mayor velocidad de acceso y respetando el patrón de componentes enseñado en la asignatura.
+  Siguiendo las directrices explicadas en clase, la clase `GameObject` gestiona sus componentes desacoplados mediante un enumerado de tipos (`ComponentType`). `GetComponent<T>()` utiliza `dynamic_cast` internamente para la resolución de tipo. Los accesos frecuentes a los componentes base (`transform`, `mesh`, `texture`) se realizan directamente mediante punteros tipados en la clase `GameObject`, evitando el cast en el camino caliente del render.
 * **Carga de texturas con DevIL:**
   El motor emplea la biblioteca oficial de la asignatura (**DevIL**) para la carga y descompresión de texturas y formatos de compresión como DDS, administrando los identificadores de imagen de DevIL (`ilGenImages`, `ilLoadImage`) y volcando los buffers correspondientes a texturas 2D de OpenGL.
 * **Separación de código Motor vs. Editor:**

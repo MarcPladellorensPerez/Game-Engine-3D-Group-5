@@ -38,6 +38,18 @@ public:
     GameObject* GetSelectedGameObject() const { return selectedGameObject; }
     void SetSelectedGameObject(GameObject* go) { selectedGameObject = go; }
 
+    void DrawGameObject(GameObject* go, unsigned int shaderProgram, unsigned int checkerTexID, bool globalShowChecker);
+
+    // Scene Framebuffer for ImGui Viewport
+    bool CreateSceneFBO(int width, int height);
+    void DestroySceneFBO();
+    void BindSceneFBO();
+    void UnbindSceneFBO();
+
+    GLuint GetSceneTextureID() const { return sceneColorTexture; }
+    int GetSceneWidth() const { return sceneWidth; }
+    int GetSceneHeight() const { return sceneHeight; }
+
 public:
     SDL_GLContext GetContext() const { return context; }
     Shader* GetDefaultShader() const { return defaultShader; }
@@ -70,6 +82,13 @@ private:
     Shader* defaultShader = nullptr;
     std::vector<GameObject*> gameObjects;
     GameObject* selectedGameObject = nullptr;
+
+    // Scene Framebuffer Object
+    GLuint sceneFBO = 0;
+    GLuint sceneColorTexture = 0;
+    GLuint sceneDepthRBO = 0;
+    int sceneWidth = 1280;
+    int sceneHeight = 720;
 
     // Grid buffers
     unsigned int gridVAO = 0;

@@ -4,11 +4,15 @@
     "sdl3",
     {
       "name": "imgui",
-      "features": ["sdl3-binding", "opengl3-binding"]
+      "features": [
+        "sdl3-binding",
+        "opengl3-binding"
+      ]
     },
     "assimp",
     "devil",
     "glm",
-    "stb"
+    "stb",
+    "rapidjson"
   ]
 }

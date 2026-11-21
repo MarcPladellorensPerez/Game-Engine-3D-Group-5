@@ -1,8 +1,15 @@
 #include "Model.h"
 #include "GameObject.h"
+#include "ComponentTransform.h"
+#include "ComponentMesh.h"
+#include "ComponentTexture.h"
+#include "CustomFormat.h"
 #include "Globals.h"
 #include <iostream>
 #include <cstring>
+#include <filesystem>
+#include <algorithm>
+#include <unordered_map>
 
 Model::Model(const std::string& path)
     : modelPath(path)
@@ -179,6 +186,47 @@ std::vector<Texture> Model::loadMaterialTextures(aiMaterial* mat, aiTextureType 
     return textures;
 }
 
+// ---------------------------------------------------------------------------
+// Helper: extract vertices and indices from an aiMesh with optional uniform scale.
+// AABB min/max are computed in mesh-local space (after scale).
+// ---------------------------------------------------------------------------
+static void ExtractMeshData(const aiMesh* mesh,
+                             float scaleFactor,
+                             std::vector<Vertex>& outVertices,
+                             std::vector<unsigned int>& outIndices,
+                             glm::vec3& outMin,
+                             glm::vec3& outMax)
+{
+    outVertices.reserve(mesh->mNumVertices);
+    outMin = glm::vec3(1e9f);
+    outMax = glm::vec3(-1e9f);
+
+    for (unsigned int v = 0; v < mesh->mNumVertices; ++v)
+    {
+        Vertex vertex;
+        vertex.Position = glm::vec3(mesh->mVertices[v].x,
+                                    mesh->mVertices[v].y,
+                                    mesh->mVertices[v].z) * scaleFactor;
+        vertex.Normal = mesh->HasNormals()
+            ? glm::vec3(mesh->mNormals[v].x, mesh->mNormals[v].y, mesh->mNormals[v].z)
+            : glm::vec3(0.0f, 1.0f, 0.0f);
+        vertex.TexCoords = mesh->mTextureCoords[0]
+            ? glm::vec2(mesh->mTextureCoords[0][v].x, mesh->mTextureCoords[0][v].y)
+            : glm::vec2(0.0f, 0.0f);
+        outVertices.push_back(vertex);
+
+        outMin = glm::min(outMin, vertex.Position);
+        outMax = glm::max(outMax, vertex.Position);
+    }
+
+    for (unsigned int f = 0; f < mesh->mNumFaces; ++f)
+    {
+        const aiFace& face = mesh->mFaces[f];
+        for (unsigned int ind = 0; ind < face.mNumIndices; ++ind)
+            outIndices.push_back(face.mIndices[ind]);
+    }
+}
+
 GameObject* Model::LoadToGameObject(const std::string& path, GameObject* parent)
 {
     Assimp::Importer importer;
@@ -222,6 +270,9 @@ GameObject* Model::LoadToGameObject(const std::string& path, GameObject* parent)
             modelName.c_str(), maxDim);
     }
 
+    std::unordered_map<std::string, ComponentTexture*> loadedTextures;
+    std::string cachedModelTexture = "";
+
     for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
     {
         aiMesh* mesh = scene->mMeshes[i];
@@ -233,53 +284,33 @@ GameObject* Model::LoadToGameObject(const std::string& path, GameObject* parent)
         std::vector<Vertex> vertices;
         std::vector<unsigned int> indices;
 
-        vertices.reserve(mesh->mNumVertices);
-        for (unsigned int v = 0; v < mesh->mNumVertices; ++v)
+        glm::vec3 aabbMin, aabbMax;
+        ExtractMeshData(mesh, scaleFactor, vertices, indices, aabbMin, aabbMax);
+
+        ComponentMesh* compMesh = static_cast<ComponentMesh*>(meshGO->CreateComponent(ComponentType::MESH));
+        if (compMesh)
         {
-            Vertex vertex;
-            vertex.Position = glm::vec3(mesh->mVertices[v].x, mesh->mVertices[v].y, mesh->mVertices[v].z) * scaleFactor;
-            if (mesh->HasNormals())
-            {
-                vertex.Normal = glm::vec3(mesh->mNormals[v].x, mesh->mNormals[v].y, mesh->mNormals[v].z);
-            }
-            else
-            {
-                vertex.Normal = glm::vec3(0.0f, 1.0f, 0.0f);
-            }
-
-            if (mesh->mTextureCoords[0])
-            {
-                vertex.TexCoords = glm::vec2(mesh->mTextureCoords[0][v].x, mesh->mTextureCoords[0][v].y);
-            }
-            else
-            {
-                vertex.TexCoords = glm::vec2(0.0f, 0.0f);
-            }
-            vertices.push_back(vertex);
+            compMesh->InitBuffers(vertices, indices);
+            compMesh->meshName = meshName;
         }
-
-        for (unsigned int f = 0; f < mesh->mNumFaces; ++f)
-        {
-            aiFace face = mesh->mFaces[f];
-            for (unsigned int ind = 0; ind < face.mNumIndices; ++ind)
-            {
-                indices.push_back(face.mIndices[ind]);
-            }
-        }
-
-        meshGO->mesh->InitBuffers(vertices, indices);
-        meshGO->mesh->meshName = meshName;
 
         bool texLoaded = false;
+        std::string resolvedTexPath;
+
+        // Check if we previously found a shared texture for this model
+        if (!cachedModelTexture.empty() && std::filesystem::exists(cachedModelTexture))
+        {
+            resolvedTexPath = cachedModelTexture;
+        }
 
         // 1. Load diffuse texture if material specifies one
-        if (mesh->mMaterialIndex >= 0)
+        if (resolvedTexPath.empty() && mesh->mMaterialIndex >= 0)
         {
             aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
             aiTextureType texTypes[] = { aiTextureType_DIFFUSE, aiTextureType_BASE_COLOR };
             for (auto tType : texTypes)
             {
-                if (texLoaded) break;
+                if (!resolvedTexPath.empty()) break;
                 if (material->GetTextureCount(tType) > 0)
                 {
                     aiString texPath;
@@ -302,15 +333,10 @@ GameObject* Model::LoadToGameObject(const std::string& path, GameObject* parent)
 
                     for (const auto& cand : candidates)
                     {
-                        FILE* f = fopen(cand.c_str(), "rb");
-                        if (f)
+                        if (std::filesystem::exists(cand))
                         {
-                            fclose(f);
-                            if (meshGO->texture->LoadTexture(cand))
-                            {
-                                texLoaded = true;
-                                break;
-                            }
+                            resolvedTexPath = cand;
+                            break;
                         }
                     }
                 }
@@ -318,7 +344,7 @@ GameObject* Model::LoadToGameObject(const std::string& path, GameObject* parent)
         }
 
         // 2. Fallback search by modelName and meshName in directory and assets/
-        if (!texLoaded)
+        if (resolvedTexPath.empty())
         {
             const std::vector<std::string> exts = { ".png", ".PNG", ".jpg", ".JPG", ".jpeg", ".JPEG", ".tga", ".TGA", ".dds", ".DDS" };
             std::vector<std::string> nameCandidates;
@@ -335,32 +361,45 @@ GameObject* Model::LoadToGameObject(const std::string& path, GameObject* parent)
 
             for (const auto& cand : nameCandidates)
             {
-                FILE* f = fopen(cand.c_str(), "rb");
-                if (f)
+                if (std::filesystem::exists(cand))
                 {
-                    fclose(f);
-                    if (meshGO->texture->LoadTexture(cand))
-                    {
-                        texLoaded = true;
-                        break;
-                    }
+                    resolvedTexPath = cand;
+                    break;
                 }
             }
         }
 
         // 3. Fallback specifically for BakerHouse only
-        if (!texLoaded)
+        if (resolvedTexPath.empty())
         {
             std::string lowerModel = modelName;
             for (char& c : lowerModel) c = static_cast<char>(tolower(c));
             if (lowerModel.find("baker") != std::string::npos)
             {
-                FILE* f = fopen("assets/Baker_house.png", "rb");
-                if (f)
+                if (std::filesystem::exists("assets/Baker_house.png"))
                 {
-                    fclose(f);
-                    texLoaded = meshGO->texture->LoadTexture("assets/Baker_house.png");
+                    resolvedTexPath = "assets/Baker_house.png";
                 }
+            }
+        }
+
+        // Now load or reuse the texture
+        if (!resolvedTexPath.empty())
+        {
+            cachedModelTexture = resolvedTexPath;
+            auto it = loadedTextures.find(resolvedTexPath);
+            ComponentTexture* compTex = static_cast<ComponentTexture*>(meshGO->CreateComponent(ComponentType::TEXTURE));
+            if (it != loadedTextures.end() && it->second != nullptr)
+            {
+                // Reuse existing loaded texture!
+                compTex->SetTexture(it->second->GetTextureID(), it->second->GetPath(),
+                                    it->second->GetWidth(), it->second->GetHeight());
+                texLoaded = true;
+            }
+            else if (compTex && compTex->LoadTexture(resolvedTexPath))
+            {
+                loadedTextures[resolvedTexPath] = compTex;
+                texLoaded = true;
             }
         }
 
@@ -375,5 +414,167 @@ GameObject* Model::LoadToGameObject(const std::string& path, GameObject* parent)
         modelName.c_str(), rootGO->GetChildren().size());
 
     return rootGO;
+}
+
+bool Model::ExportToCustomFormat(const std::string& sourceModelPath,
+                                const std::string& outputDir,
+                                std::string& outModelFile)
+{
+    std::filesystem::path srcPath(sourceModelPath);
+    std::string modelName = srcPath.stem().string();
+    outModelFile = outputDir + "/Models/" + modelName + ".cmodel";
+
+    // Fast path: if the custom format already exists and is newer than the source, reuse it
+    if (std::filesystem::exists(outModelFile) && std::filesystem::exists(sourceModelPath))
+    {
+        std::error_code ec;
+        auto srcTime = std::filesystem::last_write_time(sourceModelPath, ec);
+        auto outTime = std::filesystem::last_write_time(outModelFile, ec);
+        if (!ec && outTime >= srcTime)
+        {
+            return true;
+        }
+    }
+
+    Assimp::Importer importer;
+    const aiScene* scene = importer.ReadFile(sourceModelPath, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals);
+
+    if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
+    {
+        LOG("ERROR::ASSIMP: %s", importer.GetErrorString());
+        return false;
+    }
+
+    std::string directory = srcPath.parent_path().string();
+
+    std::filesystem::create_directories(outputDir + "/Meshes");
+    std::filesystem::create_directories(outputDir + "/Textures");
+    std::filesystem::create_directories(outputDir + "/Models");
+
+    float minX = 1e9f, maxX = -1e9f;
+    float minY = 1e9f, maxY = -1e9f;
+    float minZ = 1e9f, maxZ = -1e9f;
+    for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
+    {
+        aiMesh* m = scene->mMeshes[i];
+        for (unsigned int v = 0; v < m->mNumVertices; ++v)
+        {
+            minX = std::min(minX, m->mVertices[v].x); maxX = std::max(maxX, m->mVertices[v].x);
+            minY = std::min(minY, m->mVertices[v].y); maxY = std::max(maxY, m->mVertices[v].y);
+            minZ = std::min(minZ, m->mVertices[v].z); maxZ = std::max(maxZ, m->mVertices[v].z);
+        }
+    }
+    float maxDim = std::max({maxX - minX, maxY - minY, maxZ - minZ});
+    float scaleFactor = (maxDim > 50.0f) ? 0.01f : 1.0f;
+
+    CustomModelNode rootNode;
+    rootNode.name = modelName;
+    rootNode.position = glm::vec3(0.0f);
+    rootNode.rotationEuler = glm::vec3(0.0f);
+    rootNode.scale = glm::vec3(scaleFactor); // Apply unit scale via transform, not baked into vertices
+
+    for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
+    {
+        aiMesh* mesh = scene->mMeshes[i];
+        std::string meshName = (mesh->mName.length > 0) ? mesh->mName.C_Str() : (modelName + "_Mesh_" + std::to_string(i));
+        std::string safeMeshName = meshName;
+        for (char& c : safeMeshName)
+        {
+            if (c == ' ' || c == ':' || c == '/' || c == '\\') c = '_';
+        }
+
+        std::vector<Vertex> vertices;
+        std::vector<unsigned int> indices;
+        glm::vec3 minP, maxP;
+        // Vertices stored with raw coords; unit conversion is in rootNode.scale
+        ExtractMeshData(mesh, 1.0f, vertices, indices, minP, maxP);
+
+        std::string meshBinaryPath = outputDir + "/Meshes/" + safeMeshName + ".cmesh";
+        CustomFormat::SaveMesh(meshBinaryPath, vertices, indices, minP, maxP);
+
+        std::string texBinaryPath = "";
+        if (mesh->mMaterialIndex >= 0)
+        {
+            aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
+            aiString texPath;
+            if (material->GetTexture(aiTextureType_DIFFUSE, 0, &texPath) == AI_SUCCESS ||
+                material->GetTexture(aiTextureType_BASE_COLOR, 0, &texPath) == AI_SUCCESS)
+            {
+                std::string rawTex = texPath.C_Str();
+                std::filesystem::path tp(rawTex);
+                std::string texBase = tp.filename().string();
+                std::string candidate = directory + "/" + texBase;
+                if (!std::filesystem::exists(candidate)) candidate = directory + "/" + rawTex;
+                if (!std::filesystem::exists(candidate)) candidate = "assets/" + texBase;
+                if (!std::filesystem::exists(candidate)) candidate = "assets/" + rawTex;
+
+                if (std::filesystem::exists(candidate))
+                {
+                    std::string safeTexName = tp.stem().string();
+                    texBinaryPath = outputDir + "/Textures/" + safeTexName + ".ctex";
+                    if (!std::filesystem::exists(texBinaryPath))
+                    {
+                        ComponentTexture tempTex(nullptr);
+                        if (tempTex.LoadTexture(candidate))
+                        {
+                            tempTex.SaveToCustomFile(texBinaryPath);
+                        }
+                    }
+                }
+            }
+        }
+
+        CustomModelNode childNode;
+        childNode.name = meshName;
+        childNode.position = glm::vec3(0.0f);
+        childNode.rotationEuler = glm::vec3(0.0f);
+        childNode.scale = glm::vec3(1.0f);
+        childNode.meshFile = meshBinaryPath;
+        childNode.textureFile = texBinaryPath;
+        rootNode.children.push_back(childNode);
+    }
+
+    outModelFile = outputDir + "/Models/" + modelName + ".cmodel";
+    return CustomFormat::SaveModel(outModelFile, rootNode);
+}
+
+static GameObject* BuildGOFromNode(const CustomModelNode& node, GameObject* parent)
+{
+    GameObject* go = new GameObject(node.name, parent);
+    ComponentTransform* transform = go->GetComponent<ComponentTransform>();
+    if (transform)
+    {
+        transform->SetPosition(node.position);
+        transform->SetRotation(node.rotationEuler);
+        transform->SetScale(node.scale);
+    }
+
+    if (!node.meshFile.empty())
+    {
+        ComponentMesh* mesh = static_cast<ComponentMesh*>(go->CreateComponent(ComponentType::MESH));
+        if (mesh) mesh->LoadFromCustomFile(node.meshFile);
+    }
+    if (!node.textureFile.empty())
+    {
+        ComponentTexture* texture = static_cast<ComponentTexture*>(go->CreateComponent(ComponentType::TEXTURE));
+        if (texture) texture->LoadFromCustomFile(node.textureFile);
+    }
+
+    for (const auto& childNode : node.children)
+    {
+        BuildGOFromNode(childNode, go);
+    }
+    return go;
+}
+
+GameObject* Model::LoadFromCustomModel(const std::string& customModelPath, GameObject* parent)
+{
+    CustomModelNode rootNode;
+    if (!CustomFormat::LoadModel(customModelPath, rootNode))
+    {
+        LOG("[Model] Failed to load custom model from %s", customModelPath.c_str());
+        return nullptr;
+    }
+    return BuildGOFromNode(rootNode, parent);
 }
 

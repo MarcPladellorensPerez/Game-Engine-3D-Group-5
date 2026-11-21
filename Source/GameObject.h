@@ -3,9 +3,12 @@
 #include <vector>
 #include <glm/glm.hpp>
 #include "Component.h"
-#include "ComponentTransform.h"
-#include "ComponentMesh.h"
-#include "ComponentTexture.h"
+
+// Forward declarations
+class ComponentTransform;
+class ComponentMesh;
+class ComponentTexture;
+class GameObject;
 
 class GameObject {
 public:
@@ -13,11 +16,17 @@ public:
     virtual ~GameObject();
 
     void Update();
-    void Draw(unsigned int shaderProgram, unsigned int checkerTextureID = 0);
     void CleanUp();
 
     Component* CreateComponent(ComponentType type);
+    void RemoveComponent(Component* comp);
+    void RemoveComponent(ComponentType type);
+
     template<typename T> T* GetComponent();
+    template<typename T> const T* GetComponent() const;
+
+    ComponentTransform* GetTransform();
+    const ComponentTransform* GetTransform() const;
 
     void AddChild(GameObject* child);
     void RemoveChild(GameObject* child);
@@ -25,8 +34,6 @@ public:
     int GetChildIndex(GameObject* child) const;
 
     GameObject* Clone(GameObject* newParent = nullptr, bool appendCopySuffix = true);
-
-    void SetTexture(const std::string& texturePath);
 
     const std::string& GetName() const { return name; }
     void SetName(const std::string& n) { name = n; }
@@ -39,10 +46,6 @@ public:
 
     const std::vector<GameObject*>& GetChildren() const { return children; }
     const std::vector<Component*>& GetComponents() const { return components; }
-
-    ComponentTransform* transform = nullptr;
-    ComponentMesh* mesh = nullptr;
-    ComponentTexture* texture = nullptr;
 
 private:
     std::string name;
@@ -57,8 +60,19 @@ T* GameObject::GetComponent()
 {
     for (Component* comp : components)
     {
-        T* casted = dynamic_cast<T*>(comp);
-        if (casted) return casted;
+        if (comp && comp->GetType() == T::StaticType)
+            return static_cast<T*>(comp);
+    }
+    return nullptr;
+}
+
+template<typename T>
+const T* GameObject::GetComponent() const
+{
+    for (const Component* comp : components)
+    {
+        if (comp && comp->GetType() == T::StaticType)
+            return static_cast<const T*>(comp);
     }
     return nullptr;
 }

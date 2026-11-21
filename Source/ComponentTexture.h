@@ -1,14 +1,22 @@
 #pragma once
 #include "Component.h"
 #include <string>
+#include <cstdint>
 
 class ComponentTexture : public Component {
 public:
+    static constexpr ComponentType StaticType = ComponentType::TEXTURE;
+
     ComponentTexture(GameObject* owner);
     virtual ~ComponentTexture();
 
     bool LoadTexture(const std::string& filepath);
+    bool LoadFromCustomFile(const std::string& filepath);
+    bool SaveToCustomFile(const std::string& filepath) const;
     void SetTexture(unsigned int id, const std::string& filepath, int w, int h);
+    void SetResourceTexture(uint64_t uid);
+    void SetResourceTexture(const std::string& libraryOrAssetPath);
+    uint64_t GetTextureUID() const { return textureUID; }
     void Bind(unsigned int slot = 0);
     void Unbind(unsigned int slot = 0);
     void CleanUp() override;
@@ -23,6 +31,7 @@ public:
 
 private:
     unsigned int textureID = 0;
+    uint64_t textureUID = 0;
     std::string path = "None";
     int width = 0;
     int height = 0;

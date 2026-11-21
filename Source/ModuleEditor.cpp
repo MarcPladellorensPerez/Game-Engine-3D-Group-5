@@ -5,7 +5,12 @@
 #include "ModuleRender.h"
 #include "Model.h"
 #include "GameObject.h"
+#include "ComponentTransform.h"
+#include "ComponentMesh.h"
+#include "ComponentTexture.h"
 #include "EditorCommand.h"
+#include "ResourceManager.h"
+#include "Metadata.h"
 #include <SDL3/SDL.h>
 #include <glad/glad.h>
 #include <imgui.h>
@@ -80,10 +85,12 @@ UpdateStatus ModuleEditor::Update()
 
     DrawMainMenuBar();
 
+    if (showSceneWindow) DrawSceneWindow();
     if (showConfigWindow) DrawConfigurationWindow();
     if (showConsoleWindow) DrawConsoleWindow();
     if (showHierarchyWindow) DrawHierarchyWindow();
     if (showInspectorWindow) DrawInspectorWindow();
+    if (showResourcesWindow) DrawResourcesWindow();
     if (showAboutWindow) DrawAboutWindow();
 
     DrawImportModelModal();
@@ -109,6 +116,12 @@ UpdateStatus ModuleEditor::Update()
 
 UpdateStatus ModuleEditor::PostUpdate()
 {
+    // Clear the default framebuffer before rendering ImGui UI.
+    // The scene was rendered into the FBO; nothing should bleed into FB0.
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     SDL_GL_SwapWindow(App->window->GetWindow());
@@ -492,9 +505,10 @@ void ModuleEditor::ProcessPendingActions()
     {
         GameObject* parent = pendingDuplicateTarget->GetParent();
         GameObject* clone = pendingDuplicateTarget->Clone(parent, true);
-        if (clone->transform)
+        ComponentTransform* cloneTrans = clone->GetComponent<ComponentTransform>();
+        if (cloneTrans)
         {
-            clone->transform->position += glm::vec3(1.0f, 0.0f, 1.0f);
+            cloneTrans->position += glm::vec3(1.0f, 0.0f, 1.0f);
         }
         if (!parent && App && App->renderer)
         {
@@ -515,9 +529,10 @@ void ModuleEditor::ProcessPendingActions()
         {
             GameObject* targetParent = pendingPasteTarget ? pendingPasteTarget->GetParent() : nullptr;
             GameObject* clone = clipboardGameObject->Clone(targetParent, true);
-            if (clone->transform)
+            ComponentTransform* cloneTrans = clone->GetComponent<ComponentTransform>();
+            if (cloneTrans)
             {
-                clone->transform->position += glm::vec3(1.0f, 0.0f, 1.0f);
+                cloneTrans->position += glm::vec3(1.0f, 0.0f, 1.0f);
             }
             if (!targetParent && App && App->renderer)
             {
@@ -669,15 +684,18 @@ void ModuleEditor::DrawMainMenuBar()
         }
         if (ImGui::BeginMenu("View"))
         {
+            ImGui::MenuItem("Scene Viewport", NULL, &showSceneWindow);
             if (App && App->renderer)
             {
                 ImGui::MenuItem("3D Grid", NULL, &App->renderer->showGrid);
+                ImGui::MenuItem("Checker Texture (Global)", NULL, &App->renderer->showCheckerTexture);
                 ImGui::Separator();
             }
             ImGui::MenuItem("Configuration", NULL, &showConfigWindow);
             ImGui::MenuItem("Console", NULL, &showConsoleWindow);
             ImGui::MenuItem("Hierarchy", NULL, &showHierarchyWindow);
             ImGui::MenuItem("Inspector", NULL, &showInspectorWindow);
+            ImGui::MenuItem("Resources & References", NULL, &showResourcesWindow);
             ImGui::Separator();
             if (ImGui::MenuItem("Reset Window Layout", "Ctrl+Shift+R"))
             {
@@ -731,6 +749,58 @@ static void GetEditorLayout(float& leftW, float& rightW, float& topH, float& pos
     topH = usableH * 0.40f;
     posY = menuH + topH;
     bottomH = usableH - topH;
+}
+
+void ModuleEditor::DrawSceneWindow()
+{
+    float leftW, rightW, topH, posY, bottomH, consoleX, consoleW, consoleH, menuH, margin, displayW, displayH;
+    GetEditorLayout(leftW, rightW, topH, posY, bottomH, consoleX, consoleW, consoleH, menuH, margin, displayW, displayH);
+
+    float sceneX = leftW;
+    float sceneY = menuH;
+    float sceneW = (std::max)(100.0f, displayW - leftW - rightW);
+    float sceneH = (std::max)(100.0f, displayH - menuH - consoleH);
+
+    ImGuiCond cond = needResetLayout ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+    ImGui::SetNextWindowPos(ImVec2(sceneX, sceneY), cond);
+    ImGui::SetNextWindowSize(ImVec2(sceneW, sceneH), cond);
+    ImGui::SetNextWindowCollapsed(false, cond);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    if (!ImGui::Begin("Scene", &showSceneWindow, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+    {
+        isSceneWindowHovered = false;
+        isSceneWindowFocused = false;
+        ImGui::End();
+        ImGui::PopStyleVar();
+        return;
+    }
+
+    isSceneWindowHovered = ImGui::IsWindowHovered();
+    isSceneWindowFocused = ImGui::IsWindowFocused();
+
+    ImVec2 viewSize = ImGui::GetContentRegionAvail();
+    if (viewSize.x > 1.0f && viewSize.y > 1.0f)
+    {
+        int w = static_cast<int>(viewSize.x);
+        int h = static_cast<int>(viewSize.y);
+        if (App && App->renderer)
+        {
+            if (w != App->renderer->GetSceneWidth() || h != App->renderer->GetSceneHeight())
+            {
+                App->renderer->CreateSceneFBO(w, h);
+            }
+            if (App->camera)
+            {
+                App->camera->SetAspectRatio(viewSize.x / viewSize.y);
+            }
+            ImTextureID texID = (ImTextureID)(intptr_t)App->renderer->GetSceneTextureID();
+            ImGui::Image(texID, viewSize, ImVec2(0, 1), ImVec2(1, 0));
+        }
+    }
+
+    ImGui::End();
+    ImGui::PopStyleVar();
 }
 
 void ModuleEditor::DrawHierarchyWindow()
@@ -928,7 +998,8 @@ void ModuleEditor::DrawInspectorWindow()
 
         ImGui::Separator();
 
-        if (selected->transform && ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+        ComponentTransform* trans = selected->GetComponent<ComponentTransform>();
+        if (trans && ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
         {
             static glm::vec3 startPos, startRot, startScale;
             static bool transformDragging = false;
@@ -936,21 +1007,21 @@ void ModuleEditor::DrawInspectorWindow()
 
             if (!transformDragging || dragGO != selected)
             {
-                startPos = selected->transform->position;
-                startRot = selected->transform->rotation;
-                startScale = selected->transform->scale;
+                startPos = trans->position;
+                startRot = trans->rotation;
+                startScale = trans->scale;
                 dragGO = selected;
             }
 
-            ImGui::DragFloat3("Position", &selected->transform->position.x, 0.1f);
+            ImGui::DragFloat3("Position", &trans->position.x, 0.1f);
             bool actPos = ImGui::IsItemActivated();
             bool deactPos = ImGui::IsItemDeactivatedAfterEdit();
 
-            ImGui::DragFloat3("Rotation", &selected->transform->rotation.x, 1.0f);
+            ImGui::DragFloat3("Rotation", &trans->rotation.x, 1.0f);
             bool actRot = ImGui::IsItemActivated();
             bool deactRot = ImGui::IsItemDeactivatedAfterEdit();
 
-            ImGui::DragFloat3("Scale", &selected->transform->scale.x, 0.1f);
+            ImGui::DragFloat3("Scale", &trans->scale.x, 0.1f);
             bool actScale = ImGui::IsItemActivated();
             bool deactScale = ImGui::IsItemDeactivatedAfterEdit();
 
@@ -961,40 +1032,120 @@ void ModuleEditor::DrawInspectorWindow()
 
             if (deactPos || deactRot || deactScale)
             {
-                if (glm::length(startPos - selected->transform->position) > 0.0001f ||
-                    glm::length(startRot - selected->transform->rotation) > 0.0001f ||
-                    glm::length(startScale - selected->transform->scale) > 0.0001f)
+                if (glm::length(startPos - trans->position) > 0.0001f ||
+                    glm::length(startRot - trans->rotation) > 0.0001f ||
+                    glm::length(startScale - trans->scale) > 0.0001f)
                 {
                     ExecuteCommand(new TransformCommand(selected, startPos, startRot, startScale,
-                                                        selected->transform->position,
-                                                        selected->transform->rotation,
-                                                        selected->transform->scale), false);
+                                                        trans->position,
+                                                        trans->rotation,
+                                                        trans->scale), false);
                 }
                 transformDragging = false;
             }
         }
 
-        if (selected->mesh && ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen))
+        ComponentMesh* compMesh = selected->GetComponent<ComponentMesh>();
+        if (compMesh && ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            ImGui::Text("Mesh: %s", selected->mesh->meshName.c_str());
-            ImGui::Text("Vertices: %zu", selected->mesh->GetVertexCount());
-            ImGui::Text("Triangles: %zu", selected->mesh->GetTriangleCount());
-            ImGui::Text("Indices: %zu", selected->mesh->GetIndexCount());
+            ImGui::Text("Mesh: %s", compMesh->meshName.c_str());
+            ImGui::Text("Vertices: %zu", compMesh->GetVertexCount());
+            ImGui::Text("Triangles: %zu", compMesh->GetTriangleCount());
+            ImGui::Text("Indices: %zu", compMesh->GetIndexCount());
 
-            ImGui::Checkbox("Show Normals (Per Face)", &selected->mesh->showNormalsPerFace);
-            ImGui::Checkbox("Show Normals (Per Vertex / Triangle)", &selected->mesh->showNormalsPerVertex);
+            ImGui::Checkbox("Show Normals (Per Face)", &compMesh->showNormalsPerFace);
+            ImGui::Checkbox("Show Normals (Per Vertex / Triangle)", &compMesh->showNormalsPerVertex);
+
+            ImGui::Spacing();
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.2f, 0.2f, 0.8f));
+            if (ImGui::Button("Remove Mesh Component"))
+            {
+                selected->RemoveComponent(compMesh);
+                compMesh = nullptr;
+            }
+            ImGui::PopStyleColor();
         }
 
-        if (selected->texture && ImGui::CollapsingHeader("Texture", ImGuiTreeNodeFlags_DefaultOpen))
+        ComponentTexture* compTex = selected->GetComponent<ComponentTexture>();
+        if (compTex && ImGui::CollapsingHeader("Texture", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            ImGui::Text("Texture Path: %s", selected->texture->GetPath().c_str());
+            ImGui::Text("Texture Path: %s", compTex->GetPath().empty() ? "(None)" : compTex->GetPath().c_str());
             ImGui::Text("Size: %d x %d (%d channels)",
-                        selected->texture->GetWidth(),
-                        selected->texture->GetHeight(),
-                        selected->texture->GetChannels());
-            ImGui::Text("Texture ID: %u", selected->texture->GetTextureID());
+                        compTex->GetWidth(),
+                        compTex->GetHeight(),
+                        compTex->GetChannels());
+            ImGui::Text("Texture ID: %u", compTex->GetTextureID());
 
-            ImGui::Checkbox("Checker Texture (White & Black)", &selected->texture->showChecker);
+            static char texPathBuf[256] = "assets/Baker_house.png";
+            ImGui::InputText("##LoadTexPath", texPathBuf, sizeof(texPathBuf));
+            ImGui::SameLine();
+            if (ImGui::Button("Load Texture"))
+            {
+                compTex->LoadTexture(texPathBuf);
+            }
+
+            ImGui::Checkbox("Checker Texture (White & Black)", &compTex->showChecker);
+
+            ImGui::Spacing();
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.2f, 0.2f, 0.8f));
+            if (ImGui::Button("Remove Texture Component"))
+            {
+                selected->RemoveComponent(compTex);
+                compTex = nullptr;
+            }
+            ImGui::PopStyleColor();
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        if (ImGui::Button("Add Component...", ImVec2(-1, 0)))
+        {
+            ImGui::OpenPopup("AddComponentPopup");
+        }
+        if (ImGui::BeginPopup("AddComponentPopup"))
+        {
+            bool hasMesh = (compMesh != nullptr);
+            bool hasTex = (compTex != nullptr);
+
+            if (ImGui::BeginMenu("Mesh Component", !hasMesh))
+            {
+                if (ImGui::MenuItem("Cube"))
+                {
+                    ComponentMesh* newM = static_cast<ComponentMesh*>(selected->CreateComponent(ComponentType::MESH));
+                    if (newM) { newM->CreateCube(); newM->meshName = "Cube"; }
+                }
+                if (ImGui::MenuItem("Plane"))
+                {
+                    ComponentMesh* newM = static_cast<ComponentMesh*>(selected->CreateComponent(ComponentType::MESH));
+                    if (newM) { newM->CreatePlane(); newM->meshName = "Plane"; }
+                }
+                if (ImGui::MenuItem("Sphere"))
+                {
+                    ComponentMesh* newM = static_cast<ComponentMesh*>(selected->CreateComponent(ComponentType::MESH));
+                    if (newM) { newM->CreateSphere(); newM->meshName = "Sphere"; }
+                }
+                if (ImGui::MenuItem("Cylinder"))
+                {
+                    ComponentMesh* newM = static_cast<ComponentMesh*>(selected->CreateComponent(ComponentType::MESH));
+                    if (newM) { newM->CreateCylinder(); newM->meshName = "Cylinder"; }
+                }
+                if (ImGui::MenuItem("Pyramid"))
+                {
+                    ComponentMesh* newM = static_cast<ComponentMesh*>(selected->CreateComponent(ComponentType::MESH));
+                    if (newM) { newM->CreatePyramid(); newM->meshName = "Pyramid"; }
+                }
+                if (ImGui::MenuItem("Triangle"))
+                {
+                    ComponentMesh* newM = static_cast<ComponentMesh*>(selected->CreateComponent(ComponentType::MESH));
+                    if (newM) { newM->CreateTriangle(); newM->meshName = "Triangle"; }
+                }
+                ImGui::EndMenu();
+            }
+            if (ImGui::MenuItem("Texture Component", nullptr, false, !hasTex))
+            {
+                selected->CreateComponent(ComponentType::TEXTURE);
+            }
+            ImGui::EndPopup();
         }
     }
     else
@@ -1336,7 +1487,8 @@ void ModuleEditor::DrawConfigurationWindow()
 
             std::function<void(GameObject*)> walk = [&](GameObject* go) {
                 if (!go) return;
-                if (go->texture) applyToTex(go->texture->GetTextureID());
+                ComponentTexture* t = go->GetComponent<ComponentTexture>();
+                if (t) applyToTex(t->GetTextureID());
                 for (auto* child : go->GetChildren()) walk(child);
             };
             if (App && App->renderer)
@@ -1349,13 +1501,14 @@ void ModuleEditor::DrawConfigurationWindow()
         int count = 0;
         std::function<void(GameObject*)> countWalk = [&](GameObject* go) {
             if (!go) return;
-            if (go->texture && go->texture->GetTextureID() != 0)
+            ComponentTexture* t = go->GetComponent<ComponentTexture>();
+            if (t && t->GetTextureID() != 0)
             {
                 ++count;
                 ImGui::BulletText("%s (%dx%d, %dch)",
-                    go->texture->GetPath().c_str(),
-                    go->texture->GetWidth(), go->texture->GetHeight(),
-                    go->texture->GetChannels());
+                    t->GetPath().c_str(),
+                    t->GetWidth(), t->GetHeight(),
+                    t->GetChannels());
             }
             for (auto* child : go->GetChildren()) countWalk(child);
         };
@@ -1452,9 +1605,86 @@ void ModuleEditor::DrawAboutWindow()
 void ModuleEditor::ResetWindowLayout()
 {
     needResetLayout = true;
+    showSceneWindow = true;
     showHierarchyWindow = true;
     showInspectorWindow = true;
     showConfigWindow = true;
     showConsoleWindow = true;
+    showResourcesWindow = true;
+}
+
+void ModuleEditor::DrawResourcesWindow()
+{
+    if (!ImGui::Begin("Resources & Reference Counting", &showResourcesWindow))
+    {
+        ImGui::End();
+        return;
+    }
+
+    ImGui::Text("Resource Manager - Reference Counting & Memory Tracker");
+    ImGui::Separator();
+
+    const auto& resMap = ResourceManager::Instance().GetAllResources();
+    ImGui::Text("Total Registered Resources: %zu", resMap.size());
+
+    if (ImGui::Button("Sync Assets & Library"))
+    {
+        MetaManager::ScanAssetsAndSyncLibrary();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Regenerate Library"))
+    {
+        MetaManager::RegenerateLibrary();
+    }
+
+    ImGui::Separator();
+
+    static ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY;
+    if (ImGui::BeginTable("ResourcesTable", 6, flags, ImVec2(0, 250)))
+    {
+        ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+        ImGui::TableSetupColumn("Ref Count", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+        ImGui::TableSetupColumn("UID", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+        ImGui::TableSetupColumn("Library Path", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+
+        for (const auto& pair : resMap)
+        {
+            const auto& res = pair.second;
+            if (!res) continue;
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            if (res->type == ResourceType::MESH) ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "Mesh");
+            else if (res->type == ResourceType::TEXTURE) ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "Texture");
+            else ImGui::Text("Other");
+
+            ImGui::TableNextColumn();
+            ImGui::Text("%s", res->name.c_str());
+
+            ImGui::TableNextColumn();
+            if (res->referenceCount > 0)
+                ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "%u", res->referenceCount);
+            else
+                ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "0");
+
+            ImGui::TableNextColumn();
+            if (res->isLoaded)
+                ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "In VRAM");
+            else
+                ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Unloaded");
+
+            ImGui::TableNextColumn();
+            ImGui::Text("%llu", (unsigned long long)res->uid);
+
+            ImGui::TableNextColumn();
+            ImGui::Text("%s", res->libraryPath.c_str());
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::End();
 }
 

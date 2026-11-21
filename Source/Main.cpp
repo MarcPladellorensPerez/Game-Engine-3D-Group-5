@@ -41,7 +41,7 @@ int main(int argc, char* argv[])
                         for (auto& c : ext) c = static_cast<char>(tolower(c));
                     }
 
-                    if (ext == "fbx" || ext == "obj" || ext == "dae" || ext == "gltf" || ext == "glb")
+                    if (ext == "fbx" || ext == "obj" || ext == "dae" || ext == "gltf" || ext == "glb" || ext == "cmodel")
                     {
                         LOG("[DRAG&DROP] 3D Model: %s", droppedPath.c_str());
                         if (App && App->editor)
@@ -53,7 +53,7 @@ int main(int argc, char* argv[])
                             App->renderer->LoadModel(droppedPath);
                         }
                     }
-                    else if (ext == "dds" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "tga" || ext == "bmp")
+                    else if (ext == "dds" || ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "tga" || ext == "bmp" || ext == "ctex")
                     {
                         LOG("[DRAG&DROP] Texture: %s", droppedPath.c_str());
                         App->renderer->ApplyTextureToSelected(droppedPath);

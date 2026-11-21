@@ -1,0 +1,21 @@
+{
+    "uid": 3476249704882868890,
+    "type": 1,
+    "assetPath": "assets/colormap.png",
+    "lastModified": 18446744069065440881,
+    "textureOptions": {
+        "flipY": true,
+        "flipX": false,
+        "filterMode": 0,
+        "wrapMode": 0
+    },
+    "meshOptions": {
+        "globalScale": 1.0,
+        "ignoreCameras": true,
+        "ignoreLights": true,
+        "axisConversion": 0
+    },
+    "generatedFiles": [
+        "Library/Textures/colormap.ctex"
+    ]
+}
