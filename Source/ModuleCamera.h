@@ -33,6 +33,11 @@ public:
     float GetPitch() const { return pitch; }
     float GetAspectRatio() const { return aspectRatio; }
 
+    bool IsFreeLooking() const { return isFreeLooking; }
+    bool IsOrbiting() const { return isOrbiting; }
+    bool IsPanning() const { return isPanning; }
+    bool IsNavigating() const { return isFreeLooking || isOrbiting || isPanning; }
+
     void CalculateViewMatrix();
     void CalculateProjectionMatrix();
 

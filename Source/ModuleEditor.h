@@ -77,7 +77,7 @@ private:
     bool showConsoleWindow = true;
     bool showHierarchyWindow = true;
     bool showInspectorWindow = true;
-    bool showResourcesWindow = true;
+    bool showResourcesWindow = false;
 
     // Track display size to auto-relayout on window resize
     float lastDisplayW = 0.0f;

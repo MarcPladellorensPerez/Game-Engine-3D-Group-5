@@ -242,11 +242,15 @@ ResourceMesh* ResourceManager::RequestMesh(uint64_t uid)
     if (it != resources.end() && it->second->type == ResourceType::MESH)
     {
         auto meshRes = std::static_pointer_cast<ResourceMesh>(it->second);
-        meshRes->referenceCount++;
         if (!meshRes->isLoaded)
         {
-            meshRes->Load();
+            if (!meshRes->Load())
+            {
+                LOG("[ResourceManager] Failed to load ResourceMesh '%s'", meshRes->name.c_str());
+                return nullptr;
+            }
         }
+        meshRes->referenceCount++;
         LOG("[ResourceManager] RequestMesh: '%s' ref count is now %u", meshRes->name.c_str(), meshRes->referenceCount);
         return meshRes.get();
     }
@@ -293,11 +297,15 @@ ResourceTexture* ResourceManager::RequestTexture(uint64_t uid)
     if (it != resources.end() && it->second->type == ResourceType::TEXTURE)
     {
         auto texRes = std::static_pointer_cast<ResourceTexture>(it->second);
-        texRes->referenceCount++;
         if (!texRes->isLoaded)
         {
-            texRes->Load();
+            if (!texRes->Load())
+            {
+                LOG("[ResourceManager] Failed to load ResourceTexture '%s'", texRes->name.c_str());
+                return nullptr;
+            }
         }
+        texRes->referenceCount++;
         LOG("[ResourceManager] RequestTexture: '%s' ref count is now %u", texRes->name.c_str(), texRes->referenceCount);
         return texRes.get();
     }

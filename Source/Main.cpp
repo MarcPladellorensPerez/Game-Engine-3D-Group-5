@@ -1,9 +1,13 @@
 #include "Application.h"
 #include "ModuleRender.h"
 #include "ModuleEditor.h"
+#include "ModuleCamera.h"
 #include "EditorCommand.h"
+#include "GameObject.h"
+#include "ComponentMesh.h"
 #include <SDL3/SDL_main.h>
 #include <imgui_impl_sdl3.h>
+#include <filesystem>
 
 int main(int argc, char* argv[])
 {
@@ -23,7 +27,11 @@ int main(int argc, char* argv[])
         SDL_Event e;
         while (SDL_PollEvent(&e))
         {
-            ImGui_ImplSDL3_ProcessEvent(&e);
+            bool cameraNavigating = (App && App->camera && App->camera->IsNavigating());
+            if (!cameraNavigating || e.type != SDL_EVENT_MOUSE_MOTION)
+            {
+                ImGui_ImplSDL3_ProcessEvent(&e);
+            }
             if (e.type == SDL_EVENT_QUIT)
             {
                 running = false;
@@ -57,6 +65,31 @@ int main(int argc, char* argv[])
                     {
                         LOG("[DRAG&DROP] Texture: %s", droppedPath.c_str());
                         App->renderer->ApplyTextureToSelected(droppedPath);
+                    }
+                    else if (ext == "cmesh")
+                    {
+                        LOG("[DRAG&DROP] Mesh: %s", droppedPath.c_str());
+                        if (App && App->renderer)
+                        {
+                            GameObject* target = App->renderer->GetSelectedGameObject();
+                            if (!target)
+                            {
+                                std::string meshName = std::filesystem::path(droppedPath).stem().string();
+                                target = App->renderer->CreateGameObject(meshName);
+                            }
+                            if (target)
+                            {
+                                ComponentMesh* mesh = target->GetComponent<ComponentMesh>();
+                                if (!mesh)
+                                {
+                                    mesh = static_cast<ComponentMesh*>(target->CreateComponent(ComponentType::MESH));
+                                }
+                                if (mesh)
+                                {
+                                    mesh->LoadFromCustomFile(droppedPath);
+                                }
+                            }
+                        }
                     }
                     else
                     {

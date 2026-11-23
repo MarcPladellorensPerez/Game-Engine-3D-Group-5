@@ -157,7 +157,7 @@ public:
 
     void Execute() override
     {
-        if (gameObject)
+        if (gameObject && IsValidGameObject(gameObject))
         {
             ComponentTransform* transform = gameObject->GetComponent<ComponentTransform>();
             if (transform)
@@ -171,7 +171,7 @@ public:
 
     void Undo() override
     {
-        if (gameObject)
+        if (gameObject && IsValidGameObject(gameObject))
         {
             ComponentTransform* transform = gameObject->GetComponent<ComponentTransform>();
             if (transform)
@@ -194,6 +194,24 @@ public:
     }
 
 private:
+    static bool IsValidGameObject(GameObject* go)
+    {
+        if (!go || !App || !App->renderer) return false;
+        auto search = [&](auto& self, GameObject* current) -> bool {
+            if (current == go) return true;
+            for (GameObject* child : current->GetChildren())
+            {
+                if (self(self, child)) return true;
+            }
+            return false;
+        };
+        for (GameObject* root : App->renderer->GetGameObjects())
+        {
+            if (search(search, root)) return true;
+        }
+        return false;
+    }
+
     GameObject* gameObject = nullptr;
     std::string name;
     glm::vec3 oldPosition, oldRotation, oldScale;

@@ -5,6 +5,7 @@
 #include "ComponentTexture.h"
 #include "CustomFormat.h"
 #include "Globals.h"
+#include <glad/glad.h>
 #include <iostream>
 #include <cstring>
 #include <filesystem>
@@ -37,6 +38,15 @@ void Model::CleanUp()
         mesh.CleanUp();
     }
     meshes.clear();
+
+    for (auto& tex : textures_loaded)
+    {
+        if (tex.id != 0)
+        {
+            glDeleteTextures(1, &tex.id);
+            tex.id = 0;
+        }
+    }
     textures_loaded.clear();
 }
 
@@ -476,8 +486,8 @@ bool Model::ExportToCustomFormat(const std::string& sourceModelPath,
     for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
     {
         aiMesh* mesh = scene->mMeshes[i];
-        std::string meshName = (mesh->mName.length > 0) ? mesh->mName.C_Str() : (modelName + "_Mesh_" + std::to_string(i));
-        std::string safeMeshName = meshName;
+        std::string rawMeshName = (mesh->mName.length > 0) ? mesh->mName.C_Str() : "mesh";
+        std::string safeMeshName = modelName + "_" + rawMeshName + "_" + std::to_string(i);
         for (char& c : safeMeshName)
         {
             if (c == ' ' || c == ':' || c == '/' || c == '\\') c = '_';
@@ -524,8 +534,32 @@ bool Model::ExportToCustomFormat(const std::string& sourceModelPath,
             }
         }
 
+        // Fallback: if material has no texture path, try finding modelName image
+        if (texBinaryPath.empty())
+        {
+            const std::vector<std::string> exts = { ".png", ".jpg", ".jpeg", ".tga", ".dds" };
+            for (const auto& ext : exts)
+            {
+                std::string candidate = directory + "/" + modelName + ext;
+                if (!std::filesystem::exists(candidate)) candidate = "assets/" + modelName + ext;
+                if (std::filesystem::exists(candidate))
+                {
+                    texBinaryPath = outputDir + "/Textures/" + modelName + ".ctex";
+                    if (!std::filesystem::exists(texBinaryPath))
+                    {
+                        ComponentTexture tempTex(nullptr);
+                        if (tempTex.LoadTexture(candidate))
+                        {
+                            tempTex.SaveToCustomFile(texBinaryPath);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
         CustomModelNode childNode;
-        childNode.name = meshName;
+        childNode.name = (mesh->mName.length > 0) ? mesh->mName.C_Str() : (modelName + "_Mesh_" + std::to_string(i));
         childNode.position = glm::vec3(0.0f);
         childNode.rotationEuler = glm::vec3(0.0f);
         childNode.scale = glm::vec3(1.0f);

@@ -137,7 +137,11 @@ GameObject* GameObject::Clone(GameObject* newParent, bool appendCopySuffix)
             copyMesh->meshName = srcMesh->meshName;
             copyMesh->showNormalsPerFace = srcMesh->showNormalsPerFace;
             copyMesh->showNormalsPerVertex = srcMesh->showNormalsPerVertex;
-            if (srcMesh->GetVertexCount() > 0)
+            if (srcMesh->GetMeshUID() != 0)
+            {
+                copyMesh->SetResourceMesh(srcMesh->GetMeshUID());
+            }
+            else if (srcMesh->GetVertexCount() > 0)
             {
                 copyMesh->InitBuffers(srcMesh->GetVertices(), srcMesh->GetIndices());
             }
@@ -151,7 +155,11 @@ GameObject* GameObject::Clone(GameObject* newParent, bool appendCopySuffix)
         if (copyTexture)
         {
             copyTexture->showChecker = srcTexture->showChecker;
-            if (srcTexture->GetPath() != "None" && !srcTexture->GetPath().empty())
+            if (srcTexture->GetTextureUID() != 0)
+            {
+                copyTexture->SetResourceTexture(srcTexture->GetTextureUID());
+            }
+            else if (srcTexture->GetPath() != "None" && !srcTexture->GetPath().empty())
             {
                 copyTexture->LoadTexture(srcTexture->GetPath());
             }

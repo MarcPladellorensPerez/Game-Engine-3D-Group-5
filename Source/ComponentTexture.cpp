@@ -223,6 +223,7 @@ bool ComponentTexture::LoadFromCustomFile(const std::string& filepath)
     GLenum format = (c == 4) ? GL_RGBA : GL_RGB;
     glGenTextures(1, &textureID);
     glBindTexture(GL_TEXTURE_2D, textureID);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexImage2D(GL_TEXTURE_2D, 0, format, w, h, 0, format, GL_UNSIGNED_BYTE, data.data());
     glGenerateMipmap(GL_TEXTURE_2D);
 

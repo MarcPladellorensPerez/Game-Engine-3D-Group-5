@@ -62,7 +62,10 @@ void ModuleCamera::LookAt(const glm::vec3& target)
     }
     Front = glm::normalize(dir);
     RecalculateAnglesFromVectors();
-    Right = glm::normalize(glm::cross(Front, glm::vec3(0.0f, 1.0f, 0.0f)));
+    glm::vec3 upGuide = (glm::abs(glm::dot(Front, glm::vec3(0.0f, 1.0f, 0.0f))) > 0.999f)
+                        ? glm::vec3(0.0f, 0.0f, 1.0f)
+                        : glm::vec3(0.0f, 1.0f, 0.0f);
+    Right = glm::normalize(glm::cross(Front, upGuide));
     Up = glm::normalize(glm::cross(Right, Front));
     CalculateViewMatrix();
 }
@@ -95,7 +98,8 @@ void ModuleCamera::FocusOnModel()
             ComponentTransform* transform = targetGO->GetComponent<ComponentTransform>();
             if (transform)
             {
-                target = transform->position + glm::vec3(0.0f, 2.0f, 0.0f);
+                glm::vec3 worldPos = glm::vec3(transform->GetGlobalMatrix()[3]);
+                target = worldPos + glm::vec3(0.0f, 2.0f, 0.0f);
             }
         }
     }
@@ -249,7 +253,7 @@ UpdateStatus ModuleCamera::Update()
         isPanning = false;
     }
 
-    bool needRelativeMouse = (isFreeLooking || isOrbiting);
+    bool needRelativeMouse = (isFreeLooking || isOrbiting || isPanning);
     if (needRelativeMouse != relativeMouseActive)
     {
         if (App && App->window && App->window->GetWindow())

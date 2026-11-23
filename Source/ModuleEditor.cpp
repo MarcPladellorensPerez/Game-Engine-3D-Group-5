@@ -13,6 +13,7 @@
 #include "Metadata.h"
 #include <SDL3/SDL.h>
 #include <glad/glad.h>
+#include <cfloat>
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_opengl3.h>
@@ -64,6 +65,13 @@ UpdateStatus ModuleEditor::PreUpdate()
 {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
+
+    if (App && App->camera && App->camera->IsNavigating())
+    {
+        ImGuiIO& io = ImGui::GetIO();
+        io.MousePos = ImVec2(-FLT_MAX, -FLT_MAX);
+    }
+
     ImGui::NewFrame();
     return UPDATE_CONTINUE;
 }
@@ -879,7 +887,7 @@ void ModuleEditor::DrawGameObjectNode(GameObject* go)
 {
     if (!go) return;
 
-    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick;
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen;
     if (App && App->renderer && go == App->renderer->GetSelectedGameObject())
         flags |= ImGuiTreeNodeFlags_Selected;
 
@@ -1176,9 +1184,11 @@ void ModuleEditor::DrawConsoleWindow()
     ImGui::SameLine();
     bool copy_to_clipboard = ImGui::Button("Copy");
     ImGui::SameLine();
-    logFilter.Draw("Filter", -120.0f);
-    ImGui::SameLine();
     ImGui::Checkbox("Auto-scroll", &logAutoScroll);
+    ImGui::SameLine();
+    ImGui::Text("Filter:");
+    ImGui::SameLine();
+    logFilter.Draw("##Filter", 180.0f);
 
     ImGui::Separator();
 
@@ -1610,7 +1620,7 @@ void ModuleEditor::ResetWindowLayout()
     showInspectorWindow = true;
     showConfigWindow = true;
     showConsoleWindow = true;
-    showResourcesWindow = true;
+    showResourcesWindow = false;
 }
 
 void ModuleEditor::DrawResourcesWindow()

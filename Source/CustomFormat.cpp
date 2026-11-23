@@ -133,22 +133,41 @@ bool CustomFormat::LoadMesh(const std::string& filePath,
 
     uint32_t vCount = 0;
     uint32_t iCount = 0;
-    stream.read(reinterpret_cast<char*>(&vCount), sizeof(vCount));
-    stream.read(reinterpret_cast<char*>(&iCount), sizeof(iCount));
+    if (!stream.read(reinterpret_cast<char*>(&vCount), sizeof(vCount)) ||
+        !stream.read(reinterpret_cast<char*>(&iCount), sizeof(iCount)) ||
+        !stream.read(reinterpret_cast<char*>(&outMin), sizeof(glm::vec3)) ||
+        !stream.read(reinterpret_cast<char*>(&outMax), sizeof(glm::vec3)))
+    {
+        LOG("[CustomFormat] Truncated mesh header in %s", filePath.c_str());
+        return false;
+    }
 
-    stream.read(reinterpret_cast<char*>(&outMin), sizeof(glm::vec3));
-    stream.read(reinterpret_cast<char*>(&outMax), sizeof(glm::vec3));
+    if (vCount > 20000000 || iCount > 60000000)
+    {
+        LOG("[CustomFormat] Invalid mesh sizes in %s: %u verts, %u indices", filePath.c_str(), vCount, iCount);
+        return false;
+    }
 
     outVertices.resize(vCount);
     if (vCount > 0)
     {
-        stream.read(reinterpret_cast<char*>(outVertices.data()), vCount * sizeof(Vertex));
+        if (!stream.read(reinterpret_cast<char*>(outVertices.data()), vCount * sizeof(Vertex)))
+        {
+            LOG("[CustomFormat] Failed to read vertices in %s", filePath.c_str());
+            outVertices.clear();
+            return false;
+        }
     }
 
     outIndices.resize(iCount);
     if (iCount > 0)
     {
-        stream.read(reinterpret_cast<char*>(outIndices.data()), iCount * sizeof(unsigned int));
+        if (!stream.read(reinterpret_cast<char*>(outIndices.data()), iCount * sizeof(unsigned int)))
+        {
+            LOG("[CustomFormat] Failed to read indices in %s", filePath.c_str());
+            outIndices.clear();
+            return false;
+        }
     }
 
     return true;
@@ -218,10 +237,20 @@ bool CustomFormat::LoadTexture(const std::string& filePath,
     }
 
     uint32_t w = 0, h = 0, c = 0, dataSize = 0;
-    stream.read(reinterpret_cast<char*>(&w), sizeof(w));
-    stream.read(reinterpret_cast<char*>(&h), sizeof(h));
-    stream.read(reinterpret_cast<char*>(&c), sizeof(c));
-    stream.read(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
+    if (!stream.read(reinterpret_cast<char*>(&w), sizeof(w)) ||
+        !stream.read(reinterpret_cast<char*>(&h), sizeof(h)) ||
+        !stream.read(reinterpret_cast<char*>(&c), sizeof(c)) ||
+        !stream.read(reinterpret_cast<char*>(&dataSize), sizeof(dataSize)))
+    {
+        LOG("[CustomFormat] Truncated texture header in %s", filePath.c_str());
+        return false;
+    }
+
+    if (w == 0 || h == 0 || c == 0 || dataSize != (w * h * c))
+    {
+        LOG("[CustomFormat] Corrupted texture dimensions in %s (%ux%u, %u ch, size %u)", filePath.c_str(), w, h, c, dataSize);
+        return false;
+    }
 
     outWidth = static_cast<int>(w);
     outHeight = static_cast<int>(h);
@@ -230,7 +259,12 @@ bool CustomFormat::LoadTexture(const std::string& filePath,
     outPixelData.resize(dataSize);
     if (dataSize > 0)
     {
-        stream.read(reinterpret_cast<char*>(outPixelData.data()), dataSize);
+        if (!stream.read(reinterpret_cast<char*>(outPixelData.data()), dataSize))
+        {
+            LOG("[CustomFormat] Truncated pixel data in %s", filePath.c_str());
+            outPixelData.clear();
+            return false;
+        }
     }
 
     return true;

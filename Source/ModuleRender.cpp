@@ -99,6 +99,7 @@ void ModuleRender::DrawGameObject(GameObject* go, unsigned int shaderProgram, un
             useTexture = true;
         }
 
+        glUniform1i(glGetUniformLocation(shaderProgram, "useLighting"), useLighting ? 1 : 0);
         glUniform1i(glGetUniformLocation(shaderProgram, "useTexture"), useTexture ? 1 : 0);
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.75f, 0.75f, 0.75f);
 
