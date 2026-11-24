@@ -68,12 +68,13 @@ bool Application::Init()
         return false;
     }
 
+    // Scan assets and sync Library before scene/models are loaded
+    MetaManager::ScanAssetsAndSyncLibrary("assets", "Library");
+
     for (Module* module : modules)
     {
         if (!module->Init()) return false;
     }
-
-    MetaManager::ScanAssetsAndSyncLibrary("assets", "Library");
 
     return true;
 }

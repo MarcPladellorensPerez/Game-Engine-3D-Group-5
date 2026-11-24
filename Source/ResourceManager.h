@@ -69,6 +69,8 @@ public:
     uint64_t FindUIDByLibraryPath(const std::string& path) const;
 
     void RegisterResource(uint64_t uid, ResourceType type, const std::string& name, const std::string& assetPath, const std::string& libraryPath);
+    void UnregisterResource(uint64_t uid);
+    void UnregisterResourceByAssetPath(const std::string& assetPath);
 
 private:
     ResourceManager() = default;

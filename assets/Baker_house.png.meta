@@ -2,9 +2,10 @@
     "uid": 13783051562421362234,
     "type": 1,
     "assetPath": "assets/Baker_house.png",
-    "lastModified": 18446744069064931464,
+    "lastModified": 1793043847,
+    "optionsHash": 5683148574755214253,
     "textureOptions": {
-        "flipY": true,
+        "flipY": false,
         "flipX": false,
         "filterMode": 0,
         "wrapMode": 0

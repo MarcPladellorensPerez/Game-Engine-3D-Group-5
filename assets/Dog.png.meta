@@ -2,9 +2,10 @@
     "uid": 9564504257938452791,
     "type": 1,
     "assetPath": "assets/Dog.png",
-    "lastModified": 18446744069065362838,
+    "lastModified": 1793475221,
+    "optionsHash": 5683148574755214253,
     "textureOptions": {
-        "flipY": true,
+        "flipY": false,
         "flipX": false,
         "filterMode": 0,
         "wrapMode": 0

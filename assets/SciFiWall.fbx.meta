@@ -2,9 +2,10 @@
     "uid": 10427715560542436130,
     "type": 2,
     "assetPath": "assets/SciFiWall.fbx",
-    "lastModified": 18446744069065359972,
+    "lastModified": 1793472355,
+    "optionsHash": 5683148574755214253,
     "textureOptions": {
-        "flipY": true,
+        "flipY": false,
         "flipX": false,
         "filterMode": 0,
         "wrapMode": 0
@@ -17,9 +18,10 @@
     },
     "generatedFiles": [
         "Library/Models/SciFiWall.cmodel",
-        "Library/Meshes/Wall.cmesh",
-        "Library/Meshes/Tube1.cmesh",
-        "Library/Meshes/Tube2.cmesh",
-        "Library/Meshes/Tube3.cmesh"
+        "Library/Meshes/SciFiWall_Wall_0.cmesh",
+        "Library/Textures/SciFiWall.ctex",
+        "Library/Meshes/SciFiWall_Tube1_1.cmesh",
+        "Library/Meshes/SciFiWall_Tube2_2.cmesh",
+        "Library/Meshes/SciFiWall_Tube3_3.cmesh"
     ]
 }

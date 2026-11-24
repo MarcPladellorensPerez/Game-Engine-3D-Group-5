@@ -4,7 +4,7 @@
 #include <cstdint>
 
 struct TextureImportOptions {
-    bool flipY = true;
+    bool flipY = false;
     bool flipX = false;
     int filterMode = 0; // 0 = Linear, 1 = Nearest
     int wrapMode = 0;   // 0 = Repeat, 1 = Clamp
@@ -29,10 +29,12 @@ struct AssetMetadata {
     AssetType type = AssetType::UNKNOWN;
     std::string assetPath;
     uint64_t lastModified = 0;
+    uint64_t optionsHash = 0;
     TextureImportOptions texOptions;
     MeshImportOptions meshOptions;
     std::vector<std::string> generatedFiles; // Paths in Library/
 
+    uint64_t GetOptionsHash() const;
     bool SaveToFile(const std::string& metaFilePath) const;
     bool LoadFromFile(const std::string& metaFilePath);
 };

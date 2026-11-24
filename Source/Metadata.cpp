@@ -8,6 +8,9 @@
 #include <rapidjson/document.h>
 #include <rapidjson/prettywriter.h>
 #include <rapidjson/stringbuffer.h>
+#include <IL/il.h>
+#include <IL/ilu.h>
+#include <stb_image.h>
 #include <fstream>
 #include <sstream>
 #include <filesystem>
@@ -15,6 +18,44 @@
 #include <chrono>
 
 namespace fs = std::filesystem;
+
+static bool g_devILInitialized = false;
+static void EnsureDevIL()
+{
+    if (!g_devILInitialized)
+    {
+        ilInit();
+        iluInit();
+        g_devILInitialized = true;
+    }
+}
+
+static uint64_t GetFileTimestamp(const std::string& path)
+{
+    if (!fs::exists(path)) return 0;
+    std::error_code ec;
+    auto ftime = fs::last_write_time(path, ec);
+    if (ec) return 0;
+    auto s_time = std::chrono::file_clock::to_sys(ftime);
+    auto secs = std::chrono::duration_cast<std::chrono::seconds>(s_time.time_since_epoch()).count();
+    return static_cast<uint64_t>(secs > 0 ? secs : 0);
+}
+
+uint64_t AssetMetadata::GetOptionsHash() const
+{
+    uint64_t h = 0x9e3779b97f4a7c15ULL;
+    h ^= (uint64_t)texOptions.flipY + 0x517cc1b727220a95ULL + (h << 6) + (h >> 2);
+    h ^= (uint64_t)texOptions.flipX + 0x517cc1b727220a95ULL + (h << 6) + (h >> 2);
+    h ^= (uint64_t)texOptions.filterMode + 0x517cc1b727220a95ULL + (h << 6) + (h >> 2);
+    h ^= (uint64_t)texOptions.wrapMode + 0x517cc1b727220a95ULL + (h << 6) + (h >> 2);
+    union { float f; uint32_t u; } u;
+    u.f = meshOptions.globalScale;
+    h ^= (uint64_t)u.u + 0x517cc1b727220a95ULL + (h << 6) + (h >> 2);
+    h ^= (uint64_t)meshOptions.ignoreCameras + 0x517cc1b727220a95ULL + (h << 6) + (h >> 2);
+    h ^= (uint64_t)meshOptions.ignoreLights + 0x517cc1b727220a95ULL + (h << 6) + (h >> 2);
+    h ^= (uint64_t)meshOptions.axisConversion + 0x517cc1b727220a95ULL + (h << 6) + (h >> 2);
+    return h;
+}
 
 bool AssetMetadata::SaveToFile(const std::string& metaFilePath) const
 {
@@ -34,6 +75,9 @@ bool AssetMetadata::SaveToFile(const std::string& metaFilePath) const
 
     writer.Key("lastModified");
     writer.Uint64(lastModified);
+
+    writer.Key("optionsHash");
+    writer.Uint64(GetOptionsHash());
 
     // Texture options
     writer.Key("textureOptions");
@@ -102,6 +146,9 @@ bool AssetMetadata::LoadFromFile(const std::string& metaFilePath)
     if (doc.HasMember("lastModified") && doc["lastModified"].IsUint64())
         lastModified = doc["lastModified"].GetUint64();
 
+    if (doc.HasMember("optionsHash") && doc["optionsHash"].IsUint64())
+        optionsHash = doc["optionsHash"].GetUint64();
+
     if (doc.HasMember("textureOptions") && doc["textureOptions"].IsObject())
     {
         const auto& to = doc["textureOptions"];
@@ -128,7 +175,7 @@ bool AssetMetadata::LoadFromFile(const std::string& metaFilePath)
         {
             if (arr[i].IsString())
             {
-                generatedFiles.push_back(arr[i].GetString());
+                generatedFiles.push_back(fs::path(arr[i].GetString()).generic_string());
             }
         }
     }
@@ -175,7 +222,7 @@ bool MetaManager::CreateOrLoadMeta(const std::string& assetPath, AssetMetadata& 
 
     outMeta.uid = GenerateUID();
     outMeta.type = DetectAssetType(assetPath);
-    outMeta.assetPath = assetPath;
+    outMeta.assetPath = fs::path(assetPath).generic_string();
     outMeta.lastModified = 0;
     outMeta.generatedFiles.clear();
 
@@ -184,18 +231,18 @@ bool MetaManager::CreateOrLoadMeta(const std::string& assetPath, AssetMetadata& 
 
 bool MetaManager::ImportAssetToLibrary(const std::string& assetPath, AssetMetadata& meta, const std::string& libraryDir)
 {
-    fs::create_directories(libraryDir + "/Meshes");
-    fs::create_directories(libraryDir + "/Textures");
-    fs::create_directories(libraryDir + "/Models");
+    fs::create_directories(fs::path(libraryDir) / "Meshes");
+    fs::create_directories(fs::path(libraryDir) / "Textures");
+    fs::create_directories(fs::path(libraryDir) / "Models");
 
     meta.generatedFiles.clear();
 
     if (meta.type == AssetType::MODEL)
     {
         std::string outModelFile;
-        if (Model::ExportToCustomFormat(assetPath, libraryDir, outModelFile))
+        if (Model::ExportToCustomFormat(assetPath, libraryDir, outModelFile, meta.meshOptions))
         {
-            meta.generatedFiles.push_back(outModelFile);
+            meta.generatedFiles.push_back(fs::path(outModelFile).generic_string());
 
             // Collect all generated mesh and texture files directly from the exported model
             CustomModelNode rootNode;
@@ -204,11 +251,19 @@ bool MetaManager::ImportAssetToLibrary(const std::string& assetPath, AssetMetada
                 std::function<void(const CustomModelNode&)> collect = [&](const CustomModelNode& node) {
                     if (!node.meshFile.empty())
                     {
-                        meta.generatedFiles.push_back(node.meshFile);
+                        std::string p = fs::path(node.meshFile).generic_string();
+                        if (std::find(meta.generatedFiles.begin(), meta.generatedFiles.end(), p) == meta.generatedFiles.end())
+                        {
+                            meta.generatedFiles.push_back(p);
+                        }
                     }
                     if (!node.textureFile.empty())
                     {
-                        meta.generatedFiles.push_back(node.textureFile);
+                        std::string p = fs::path(node.textureFile).generic_string();
+                        if (std::find(meta.generatedFiles.begin(), meta.generatedFiles.end(), p) == meta.generatedFiles.end())
+                        {
+                            meta.generatedFiles.push_back(p);
+                        }
                     }
                     for (const auto& child : node.children)
                     {
@@ -227,37 +282,75 @@ bool MetaManager::ImportAssetToLibrary(const std::string& assetPath, AssetMetada
     }
     else if (meta.type == AssetType::TEXTURE)
     {
-        std::string stem = fs::path(assetPath).stem().string();
-        std::string outTexFile = libraryDir + "/Textures/" + stem + ".ctex";
+        std::string stem = fs::path(assetPath).stem().generic_string();
+        std::string outTexFile = (fs::path(libraryDir) / "Textures" / (stem + ".ctex")).generic_string();
 
-        ComponentTexture tempTex(nullptr);
-        if (tempTex.LoadTexture(assetPath))
+        EnsureDevIL();
+        ILuint imgId = 0;
+        ilGenImages(1, &imgId);
+        ilBindImage(imgId);
+
+        bool saved = false;
+        if (ilLoadImage(assetPath.c_str()))
         {
-            if (tempTex.SaveToCustomFile(outTexFile))
+            ilConvertImage(IL_RGBA, IL_UNSIGNED_BYTE);
+            int w = ilGetInteger(IL_IMAGE_WIDTH);
+            int h = ilGetInteger(IL_IMAGE_HEIGHT);
+            int comp = 4;
+            if (meta.texOptions.flipY) iluFlipImage();
+            if (meta.texOptions.flipX) iluMirror();
+
+            unsigned char* data = ilGetData();
+            if (data && CustomFormat::SaveTexture(outTexFile, w, h, comp, data))
             {
                 meta.generatedFiles.push_back(outTexFile);
-                LOG("[MetaManager] Imported texture '%s' to '%s'", assetPath.c_str(), outTexFile.c_str());
+                saved = true;
+                LOG("[MetaManager] Imported texture '%s' to '%s' (DevIL)", assetPath.c_str(), outTexFile.c_str());
             }
-            else
-            {
-                LOG("[MetaManager] Failed to save custom texture '%s'", outTexFile.c_str());
-                return false;
-            }
+            ilDeleteImages(1, &imgId);
         }
         else
         {
-            LOG("[MetaManager] Failed to load source texture '%s'", assetPath.c_str());
+            ilDeleteImages(1, &imgId);
+            // Fallback to stb_image
+            stbi_set_flip_vertically_on_load(meta.texOptions.flipY);
+            int w = 0, h = 0, comp = 0;
+            unsigned char* stbData = stbi_load(assetPath.c_str(), &w, &h, &comp, 4);
+            if (stbData)
+            {
+                if (meta.texOptions.flipX)
+                {
+                    for (int y = 0; y < h; ++y)
+                    {
+                        for (int x = 0; x < w / 2; ++x)
+                        {
+                            for (int c = 0; c < 4; ++c)
+                            {
+                                std::swap(stbData[(y * w + x) * 4 + c], stbData[(y * w + (w - 1 - x)) * 4 + c]);
+                            }
+                        }
+                    }
+                }
+                if (CustomFormat::SaveTexture(outTexFile, w, h, 4, stbData))
+                {
+                    meta.generatedFiles.push_back(outTexFile);
+                    saved = true;
+                    LOG("[MetaManager] Imported texture '%s' to '%s' (stb)", assetPath.c_str(), outTexFile.c_str());
+                }
+                stbi_image_free(stbData);
+            }
+        }
+
+        if (!saved)
+        {
+            LOG("[MetaManager] Failed to import texture '%s'", assetPath.c_str());
             return false;
         }
     }
 
     // Update last modified timestamp
-    if (fs::exists(assetPath))
-    {
-        auto ftime = fs::last_write_time(assetPath);
-        meta.lastModified = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(ftime.time_since_epoch()).count());
-    }
-
+    meta.lastModified = GetFileTimestamp(assetPath);
+    meta.optionsHash = meta.GetOptionsHash();
     meta.SaveToFile(GetMetaPath(assetPath));
     return true;
 }
@@ -272,6 +365,26 @@ bool MetaManager::ScanAssetsAndSyncLibrary(const std::string& assetsDir, const s
 
     LOG("[MetaManager] Scanning assets directory: %s", assetsDir.c_str());
 
+    // 1. Remove orphaned .meta files whose source asset no longer exists
+    for (const auto& entry : fs::recursive_directory_iterator(assetsDir))
+    {
+        if (entry.is_regular_file())
+        {
+            std::string pathStr = entry.path().generic_string();
+            if (pathStr.ends_with(".meta"))
+            {
+                std::string sourceAsset = pathStr.substr(0, pathStr.length() - 5);
+                if (!fs::exists(sourceAsset))
+                {
+                    LOG("[MetaManager] Removing orphaned meta file: %s", pathStr.c_str());
+                    std::error_code ec;
+                    fs::remove(pathStr, ec);
+                }
+            }
+        }
+    }
+
+    // 2. Scan regular assets and re-import if needed
     for (const auto& entry : fs::recursive_directory_iterator(assetsDir))
     {
         if (entry.is_regular_file())
@@ -285,10 +398,13 @@ bool MetaManager::ScanAssetsAndSyncLibrary(const std::string& assetsDir, const s
             AssetMetadata meta;
             CreateOrLoadMeta(pathStr, meta);
 
-            auto ftime = fs::last_write_time(entry.path());
-            uint64_t currentMod = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(ftime.time_since_epoch()).count());
+            uint64_t currentMod = GetFileTimestamp(pathStr);
+            uint64_t currentOptHash = meta.GetOptionsHash();
+            bool optionsChanged = (meta.optionsHash == 0 || meta.optionsHash != currentOptHash);
 
-            bool needsReimport = (meta.lastModified == 0 || currentMod > meta.lastModified || meta.generatedFiles.empty());
+            // Reimport if never imported, legacy overflowed timestamp (>10000000000), modified asset, options changed, or missing generated file
+            bool needsReimport = (meta.lastModified == 0 || meta.lastModified > 10000000000ULL ||
+                                  currentMod != meta.lastModified || optionsChanged || meta.generatedFiles.empty());
             if (!needsReimport)
             {
                 for (const auto& genFile : meta.generatedFiles)
@@ -308,17 +424,17 @@ bool MetaManager::ScanAssetsAndSyncLibrary(const std::string& assetsDir, const s
             }
 
             // Register into ResourceManager so resources are visible and indexed
-            std::string stem = fs::path(pathStr).stem().string();
+            std::string stem = fs::path(pathStr).stem().generic_string();
             if (type == AssetType::TEXTURE)
             {
-                std::string libTex = libraryDir + "/Textures/" + stem + ".ctex";
+                std::string libTex = (fs::path(libraryDir) / "Textures" / (stem + ".ctex")).generic_string();
                 ResourceManager::Instance().RegisterResource(meta.uid, ResourceType::TEXTURE, stem, pathStr, libTex);
             }
             else if (type == AssetType::MODEL)
             {
                 for (const auto& genFile : meta.generatedFiles)
                 {
-                    std::string genStem = fs::path(genFile).stem().string();
+                    std::string genStem = fs::path(genFile).stem().generic_string();
                     if (genFile.ends_with(".cmesh"))
                     {
                         uint64_t subUid = meta.uid ^ (std::hash<std::string>{}(genFile) + 0x9e3779b97f4a7c15ULL);
@@ -347,25 +463,31 @@ bool MetaManager::RegenerateLibrary(const std::string& assetsDir, const std::str
         fs::remove_all(libraryDir, ec);
     }
 
-    fs::create_directories(libraryDir + "/Meshes");
-    fs::create_directories(libraryDir + "/Textures");
-    fs::create_directories(libraryDir + "/Models");
+    fs::create_directories(fs::path(libraryDir) / "Meshes");
+    fs::create_directories(fs::path(libraryDir) / "Textures");
+    fs::create_directories(fs::path(libraryDir) / "Models");
 
+    // Clear generatedFiles and reset timestamp on .meta files so all assets are cleanly re-imported
     for (const auto& entry : fs::recursive_directory_iterator(assetsDir))
     {
         if (entry.is_regular_file())
         {
             std::string pathStr = entry.path().generic_string();
-            if (pathStr.ends_with(".meta")) continue;
-
-            AssetType type = DetectAssetType(pathStr);
-            if (type == AssetType::UNKNOWN) continue;
-
-            AssetMetadata meta;
-            CreateOrLoadMeta(pathStr, meta);
-            ImportAssetToLibrary(pathStr, meta, libraryDir);
+            if (pathStr.ends_with(".meta"))
+            {
+                AssetMetadata meta;
+                if (meta.LoadFromFile(pathStr))
+                {
+                    meta.generatedFiles.clear();
+                    meta.lastModified = 0;
+                    meta.SaveToFile(pathStr);
+                }
+            }
         }
     }
+
+    // Scan, re-import all assets and register them into ResourceManager
+    ScanAssetsAndSyncLibrary(assetsDir, libraryDir);
 
     LOG("[MetaManager] Library regenerated successfully.");
     return true;
@@ -386,6 +508,12 @@ bool MetaManager::DeleteAsset(const std::string& assetPath, const std::string& l
                 LOG("[MetaManager] Deleted Library file: %s", genFile.c_str());
             }
         }
+    }
+
+    ResourceManager::Instance().UnregisterResourceByAssetPath(assetPath);
+    if (meta.uid != 0)
+    {
+        ResourceManager::Instance().UnregisterResource(meta.uid);
     }
 
     if (fs::exists(assetPath))

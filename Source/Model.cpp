@@ -6,6 +6,9 @@
 #include "CustomFormat.h"
 #include "Globals.h"
 #include <glad/glad.h>
+#include <IL/il.h>
+#include <IL/ilu.h>
+#include <stb_image.h>
 #include <iostream>
 #include <cstring>
 #include <filesystem>
@@ -426,28 +429,88 @@ GameObject* Model::LoadToGameObject(const std::string& path, GameObject* parent)
     return rootGO;
 }
 
+static bool g_modelDevILInit = false;
+static void EnsureModelDevIL()
+{
+    if (!g_modelDevILInit)
+    {
+        ilInit();
+        iluInit();
+        g_modelDevILInit = true;
+    }
+}
+
+static bool ExportTextureToCustomFormat(const std::string& imagePath, const std::string& outCtexPath)
+{
+    EnsureModelDevIL();
+    ILuint imgId = 0;
+    ilGenImages(1, &imgId);
+    ilBindImage(imgId);
+    if (ilLoadImage(imagePath.c_str()))
+    {
+        ilConvertImage(IL_RGBA, IL_UNSIGNED_BYTE);
+        int w = ilGetInteger(IL_IMAGE_WIDTH);
+        int h = ilGetInteger(IL_IMAGE_HEIGHT);
+        unsigned char* data = ilGetData();
+        bool ok = CustomFormat::SaveTexture(outCtexPath, w, h, 4, data);
+        ilDeleteImages(1, &imgId);
+        return ok;
+    }
+    ilDeleteImages(1, &imgId);
+
+    // Fallback stb_image
+    int w = 0, h = 0, comp = 0;
+    unsigned char* data = stbi_load(imagePath.c_str(), &w, &h, &comp, 4);
+    if (data)
+    {
+        bool ok = CustomFormat::SaveTexture(outCtexPath, w, h, 4, data);
+        stbi_image_free(data);
+        return ok;
+    }
+    return false;
+}
+
 bool Model::ExportToCustomFormat(const std::string& sourceModelPath,
                                 const std::string& outputDir,
-                                std::string& outModelFile)
+                                std::string& outModelFile,
+                                const MeshImportOptions& options)
 {
-    std::filesystem::path srcPath(sourceModelPath);
-    std::string modelName = srcPath.stem().string();
-    outModelFile = outputDir + "/Models/" + modelName + ".cmodel";
-
-    // Fast path: if the custom format already exists and is newer than the source, reuse it
-    if (std::filesystem::exists(outModelFile) && std::filesystem::exists(sourceModelPath))
+    MeshImportOptions effectiveOptions = options;
+    std::string metaPath = sourceModelPath + ".meta";
+    if (std::filesystem::exists(metaPath))
     {
-        std::error_code ec;
-        auto srcTime = std::filesystem::last_write_time(sourceModelPath, ec);
-        auto outTime = std::filesystem::last_write_time(outModelFile, ec);
-        if (!ec && outTime >= srcTime)
+        AssetMetadata meta;
+        if (meta.LoadFromFile(metaPath))
         {
-            return true;
+            MeshImportOptions defaultOpts;
+            if (options.globalScale == defaultOpts.globalScale &&
+                options.ignoreCameras == defaultOpts.ignoreCameras &&
+                options.ignoreLights == defaultOpts.ignoreLights &&
+                options.axisConversion == defaultOpts.axisConversion)
+            {
+                effectiveOptions = meta.meshOptions;
+            }
         }
     }
 
+    std::filesystem::path srcPath(sourceModelPath);
+    std::string modelName = srcPath.stem().string();
+    outModelFile = (std::filesystem::path(outputDir) / "Models" / (modelName + ".cmodel")).generic_string();
+
+
+
     Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(sourceModelPath, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals);
+    unsigned int flags = aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals;
+    int removeFlags = 0;
+    if (effectiveOptions.ignoreCameras) removeFlags |= aiComponent_CAMERAS;
+    if (effectiveOptions.ignoreLights) removeFlags |= aiComponent_LIGHTS;
+    if (removeFlags != 0)
+    {
+        importer.SetPropertyInteger(AI_CONFIG_PP_RVC_FLAGS, removeFlags);
+        flags |= aiProcess_RemoveComponent;
+    }
+
+    const aiScene* scene = importer.ReadFile(sourceModelPath, flags);
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
     {
@@ -455,11 +518,11 @@ bool Model::ExportToCustomFormat(const std::string& sourceModelPath,
         return false;
     }
 
-    std::string directory = srcPath.parent_path().string();
+    std::string directory = srcPath.parent_path().generic_string();
 
-    std::filesystem::create_directories(outputDir + "/Meshes");
-    std::filesystem::create_directories(outputDir + "/Textures");
-    std::filesystem::create_directories(outputDir + "/Models");
+    std::filesystem::create_directories(std::filesystem::path(outputDir) / "Meshes");
+    std::filesystem::create_directories(std::filesystem::path(outputDir) / "Textures");
+    std::filesystem::create_directories(std::filesystem::path(outputDir) / "Models");
 
     float minX = 1e9f, maxX = -1e9f;
     float minY = 1e9f, maxY = -1e9f;
@@ -476,11 +539,16 @@ bool Model::ExportToCustomFormat(const std::string& sourceModelPath,
     }
     float maxDim = std::max({maxX - minX, maxY - minY, maxZ - minZ});
     float scaleFactor = (maxDim > 50.0f) ? 0.01f : 1.0f;
+    scaleFactor *= (effectiveOptions.globalScale > 0.0f ? effectiveOptions.globalScale : 1.0f);
 
     CustomModelNode rootNode;
     rootNode.name = modelName;
     rootNode.position = glm::vec3(0.0f);
     rootNode.rotationEuler = glm::vec3(0.0f);
+    if (effectiveOptions.axisConversion == 2) // Z-Up to Y-Up
+    {
+        rootNode.rotationEuler.x = -90.0f;
+    }
     rootNode.scale = glm::vec3(scaleFactor); // Apply unit scale via transform, not baked into vertices
 
     for (unsigned int i = 0; i < scene->mNumMeshes; ++i)
@@ -499,7 +567,7 @@ bool Model::ExportToCustomFormat(const std::string& sourceModelPath,
         // Vertices stored with raw coords; unit conversion is in rootNode.scale
         ExtractMeshData(mesh, 1.0f, vertices, indices, minP, maxP);
 
-        std::string meshBinaryPath = outputDir + "/Meshes/" + safeMeshName + ".cmesh";
+        std::string meshBinaryPath = (std::filesystem::path(outputDir) / "Meshes" / (safeMeshName + ".cmesh")).generic_string();
         CustomFormat::SaveMesh(meshBinaryPath, vertices, indices, minP, maxP);
 
         std::string texBinaryPath = "";
@@ -511,8 +579,9 @@ bool Model::ExportToCustomFormat(const std::string& sourceModelPath,
                 material->GetTexture(aiTextureType_BASE_COLOR, 0, &texPath) == AI_SUCCESS)
             {
                 std::string rawTex = texPath.C_Str();
+                for (char& c : rawTex) { if (c == '\\') c = '/'; }
                 std::filesystem::path tp(rawTex);
-                std::string texBase = tp.filename().string();
+                std::string texBase = tp.filename().generic_string();
                 std::string candidate = directory + "/" + texBase;
                 if (!std::filesystem::exists(candidate)) candidate = directory + "/" + rawTex;
                 if (!std::filesystem::exists(candidate)) candidate = "assets/" + texBase;
@@ -520,15 +589,11 @@ bool Model::ExportToCustomFormat(const std::string& sourceModelPath,
 
                 if (std::filesystem::exists(candidate))
                 {
-                    std::string safeTexName = tp.stem().string();
-                    texBinaryPath = outputDir + "/Textures/" + safeTexName + ".ctex";
+                    std::string safeTexName = tp.stem().generic_string();
+                    texBinaryPath = (std::filesystem::path(outputDir) / "Textures" / (safeTexName + ".ctex")).generic_string();
                     if (!std::filesystem::exists(texBinaryPath))
                     {
-                        ComponentTexture tempTex(nullptr);
-                        if (tempTex.LoadTexture(candidate))
-                        {
-                            tempTex.SaveToCustomFile(texBinaryPath);
-                        }
+                        ExportTextureToCustomFormat(candidate, texBinaryPath);
                     }
                 }
             }
@@ -547,11 +612,7 @@ bool Model::ExportToCustomFormat(const std::string& sourceModelPath,
                     texBinaryPath = outputDir + "/Textures/" + modelName + ".ctex";
                     if (!std::filesystem::exists(texBinaryPath))
                     {
-                        ComponentTexture tempTex(nullptr);
-                        if (tempTex.LoadTexture(candidate))
-                        {
-                            tempTex.SaveToCustomFile(texBinaryPath);
-                        }
+                        ExportTextureToCustomFormat(candidate, texBinaryPath);
                     }
                     break;
                 }

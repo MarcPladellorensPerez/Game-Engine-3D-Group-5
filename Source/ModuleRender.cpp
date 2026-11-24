@@ -7,6 +7,7 @@
 #include "ComponentTransform.h"
 #include "ComponentMesh.h"
 #include "ComponentTexture.h"
+#include "Metadata.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <filesystem>
 
@@ -252,10 +253,24 @@ GameObject* ModuleRender::LoadModel(const std::string& path)
     }
     else
     {
-        std::string customModelFile;
-        if (Model::ExportToCustomFormat(path, "Library", customModelFile))
+        std::string stem = p.stem().string();
+        std::string customModelFile = (std::filesystem::path("Library") / "Models" / (stem + ".cmodel")).generic_string();
+
+        AssetMetadata meta;
+        MetaManager::CreateOrLoadMeta(path, meta);
+
+        // Check if options changed in .meta or if the library file is missing
+        uint64_t currentOptHash = meta.GetOptionsHash();
+        bool optionsChanged = (meta.optionsHash == 0 || meta.optionsHash != currentOptHash);
+        bool fileMissing = !std::filesystem::exists(customModelFile);
+
+        if (optionsChanged || fileMissing)
         {
-            LOG("[ModuleRender] Converted %s to custom format: %s", path.c_str(), customModelFile.c_str());
+            MetaManager::ImportAssetToLibrary(path, meta, "Library");
+        }
+
+        if (std::filesystem::exists(customModelFile))
+        {
             newObj = Model::LoadFromCustomModel(customModelFile);
         }
         else

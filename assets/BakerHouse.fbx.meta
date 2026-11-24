@@ -2,9 +2,10 @@
     "uid": 1300644227487456334,
     "type": 2,
     "assetPath": "assets/BakerHouse.fbx",
-    "lastModified": 18446744069064931464,
+    "lastModified": 1793043847,
+    "optionsHash": 5683148574755214253,
     "textureOptions": {
-        "flipY": true,
+        "flipY": false,
         "flipX": false,
         "filterMode": 0,
         "wrapMode": 0
@@ -17,9 +18,8 @@
     },
     "generatedFiles": [
         "Library/Models/BakerHouse.cmodel",
-        "Library/Meshes/Untitled.001.cmesh",
+        "Library/Meshes/BakerHouse_Untitled.001_0.cmesh",
         "Library/Textures/Baker_house.ctex",
-        "Library/Meshes/Untitled.cmesh",
-        "Library/Textures/Baker_house.ctex"
+        "Library/Meshes/BakerHouse_Untitled_1.cmesh"
     ]
 }
