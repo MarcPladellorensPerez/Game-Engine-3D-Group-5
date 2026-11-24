@@ -33,7 +33,10 @@ public:
     void InsertChild(int index, GameObject* child);
     int GetChildIndex(GameObject* child) const;
 
-    GameObject* Clone(GameObject* newParent = nullptr, bool appendCopySuffix = true);
+    GameObject* Clone(GameObject* newParent = nullptr, bool appendCopySuffix = true, bool acquireResources = true);
+
+    void ReleaseResourceReferences();
+    void AcquireResourceReferences();
 
     const std::string& GetName() const { return name; }
     void SetName(const std::string& n) { name = n; }

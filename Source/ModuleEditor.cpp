@@ -348,6 +348,7 @@ void ModuleEditor::ClearSceneAndLoadModel(const std::string& path)
     for (GameObject* go : oldObjects)
     {
         App->renderer->DetachGameObject(go);
+        if (go) go->ReleaseResourceReferences();
     }
 
     GameObject* newObj = App->renderer->LoadModel(path);
@@ -371,6 +372,7 @@ void ModuleEditor::ClearScene()
     for (GameObject* go : oldObjects)
     {
         App->renderer->DetachGameObject(go);
+        if (go) go->ReleaseResourceReferences();
     }
     ExecuteCommand(new ReplaceSceneCommand(oldObjects, nullptr), false);
     App->renderer->SetSelectedGameObject(nullptr);
@@ -460,7 +462,7 @@ void ModuleEditor::CopySelectedGameObject()
         clipboardGameObject = nullptr;
     }
 
-    clipboardGameObject = selected->Clone(nullptr, false);
+    clipboardGameObject = selected->Clone(nullptr, false, false);
     LOG("[Clipboard] Copied '%s'", selected->GetName().c_str());
 }
 
@@ -1057,6 +1059,15 @@ void ModuleEditor::DrawInspectorWindow()
         if (compMesh && ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen))
         {
             ImGui::Text("Mesh: %s", compMesh->meshName.c_str());
+            if (compMesh->GetMeshUID() != 0)
+            {
+                Resource* res = ResourceManager::Instance().GetResource(compMesh->GetMeshUID());
+                ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "Resource UID: %llu", (unsigned long long)compMesh->GetMeshUID());
+                if (res)
+                {
+                    ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "References: %u", res->referenceCount);
+                }
+            }
             ImGui::Text("Vertices: %zu", compMesh->GetVertexCount());
             ImGui::Text("Triangles: %zu", compMesh->GetTriangleCount());
             ImGui::Text("Indices: %zu", compMesh->GetIndexCount());
@@ -1078,6 +1089,15 @@ void ModuleEditor::DrawInspectorWindow()
         if (compTex && ImGui::CollapsingHeader("Texture", ImGuiTreeNodeFlags_DefaultOpen))
         {
             ImGui::Text("Texture Path: %s", compTex->GetPath().empty() ? "(None)" : compTex->GetPath().c_str());
+            if (compTex->GetTextureUID() != 0)
+            {
+                Resource* res = ResourceManager::Instance().GetResource(compTex->GetTextureUID());
+                ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "Resource UID: %llu", (unsigned long long)compTex->GetTextureUID());
+                if (res)
+                {
+                    ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "References: %u", res->referenceCount);
+                }
+            }
             ImGui::Text("Size: %d x %d (%d channels)",
                         compTex->GetWidth(),
                         compTex->GetHeight(),
@@ -1625,6 +1645,13 @@ void ModuleEditor::ResetWindowLayout()
 
 void ModuleEditor::DrawResourcesWindow()
 {
+    float leftW, rightW, topH, posY, bottomH, consoleX, consoleW, consoleH, menuH, margin, displayW, displayH;
+    GetEditorLayout(leftW, rightW, topH, posY, bottomH, consoleX, consoleW, consoleH, menuH, margin, displayW, displayH);
+
+    ImGuiCond cond = needResetLayout ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+    ImGui::SetNextWindowPos(ImVec2(leftW, posY), cond);
+    ImGui::SetNextWindowSize(ImVec2((std::max)(400.0f, displayW - leftW - rightW), (std::max)(220.0f, bottomH)), cond);
+
     if (!ImGui::Begin("Resources & Reference Counting", &showResourcesWindow))
     {
         ImGui::End();
@@ -1635,7 +1662,12 @@ void ModuleEditor::DrawResourcesWindow()
     ImGui::Separator();
 
     const auto& resMap = ResourceManager::Instance().GetAllResources();
-    ImGui::Text("Total Registered Resources: %zu", resMap.size());
+    size_t loadedCount = 0;
+    for (const auto& pair : resMap)
+    {
+        if (pair.second && pair.second->isLoaded) loadedCount++;
+    }
+    ImGui::Text("Total Registered Resources: %zu  |  Loaded in VRAM: %zu", resMap.size(), loadedCount);
 
     if (ImGui::Button("Sync Assets & Library"))
     {

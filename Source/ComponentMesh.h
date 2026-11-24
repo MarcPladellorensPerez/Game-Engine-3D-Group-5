@@ -31,6 +31,9 @@ public:
 
     void SetResourceMesh(uint64_t uid);
     void SetResourceMesh(const std::string& libraryPath);
+    void SetDeferredResourceUID(uint64_t uid, const std::string& name);
+    void ReleaseResourceReference();
+    void AcquireResourceReference();
     uint64_t GetMeshUID() const { return meshUID; }
 
     std::string meshName = "Mesh";
@@ -54,6 +57,7 @@ private:
     glm::vec3 aabbMin{0.0f};
     glm::vec3 aabbMax{0.0f};
     uint64_t meshUID = 0;
+    bool hasResourceRef = false;
 
     unsigned int VAO = 0, VBO = 0, EBO = 0;
 

@@ -64,6 +64,11 @@ public:
     void ReleaseTexture(uint64_t uid);
 
     const std::unordered_map<uint64_t, std::shared_ptr<Resource>>& GetAllResources() const { return resources; }
+    Resource* GetResource(uint64_t uid) const
+    {
+        auto it = resources.find(uid);
+        return (it != resources.end()) ? it->second.get() : nullptr;
+    }
 
     uint64_t FindUIDByAssetPath(const std::string& path) const;
     uint64_t FindUIDByLibraryPath(const std::string& path) const;

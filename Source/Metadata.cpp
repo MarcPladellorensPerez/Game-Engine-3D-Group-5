@@ -384,6 +384,14 @@ bool MetaManager::ScanAssetsAndSyncLibrary(const std::string& assetsDir, const s
         }
     }
 
+    struct ScannedAsset
+    {
+        std::string pathStr;
+        AssetType type;
+        AssetMetadata meta;
+    };
+    std::vector<ScannedAsset> scannedAssets;
+
     // 2. Scan regular assets and re-import if needed
     for (const auto& entry : fs::recursive_directory_iterator(assetsDir))
     {
@@ -423,28 +431,37 @@ bool MetaManager::ScanAssetsAndSyncLibrary(const std::string& assetsDir, const s
                 ImportAssetToLibrary(pathStr, meta, libraryDir);
             }
 
-            // Register into ResourceManager so resources are visible and indexed
-            std::string stem = fs::path(pathStr).stem().generic_string();
-            if (type == AssetType::TEXTURE)
+            scannedAssets.push_back({pathStr, type, meta});
+        }
+    }
+
+    // 3. Register standalone textures first so models sharing the same .ctex do not create duplicate entries
+    for (const auto& item : scannedAssets)
+    {
+        if (item.type == AssetType::TEXTURE)
+        {
+            std::string stem = fs::path(item.pathStr).stem().generic_string();
+            std::string libTex = (fs::path(libraryDir) / "Textures" / (stem + ".ctex")).generic_string();
+            ResourceManager::Instance().RegisterResource(item.meta.uid, ResourceType::TEXTURE, stem, item.pathStr, libTex);
+        }
+    }
+
+    for (const auto& item : scannedAssets)
+    {
+        if (item.type == AssetType::MODEL)
+        {
+            for (const auto& genFile : item.meta.generatedFiles)
             {
-                std::string libTex = (fs::path(libraryDir) / "Textures" / (stem + ".ctex")).generic_string();
-                ResourceManager::Instance().RegisterResource(meta.uid, ResourceType::TEXTURE, stem, pathStr, libTex);
-            }
-            else if (type == AssetType::MODEL)
-            {
-                for (const auto& genFile : meta.generatedFiles)
+                std::string genStem = fs::path(genFile).stem().generic_string();
+                if (genFile.ends_with(".cmesh"))
                 {
-                    std::string genStem = fs::path(genFile).stem().generic_string();
-                    if (genFile.ends_with(".cmesh"))
-                    {
-                        uint64_t subUid = meta.uid ^ (std::hash<std::string>{}(genFile) + 0x9e3779b97f4a7c15ULL);
-                        ResourceManager::Instance().RegisterResource(subUid, ResourceType::MESH, genStem, pathStr, genFile);
-                    }
-                    else if (genFile.ends_with(".ctex"))
-                    {
-                        uint64_t subUid = meta.uid ^ (std::hash<std::string>{}(genFile) + 0x517cc1b727220a95ULL);
-                        ResourceManager::Instance().RegisterResource(subUid, ResourceType::TEXTURE, genStem, pathStr, genFile);
-                    }
+                    uint64_t subUid = item.meta.uid ^ (std::hash<std::string>{}(genFile) + 0x9e3779b97f4a7c15ULL);
+                    ResourceManager::Instance().RegisterResource(subUid, ResourceType::MESH, genStem, item.pathStr, genFile);
+                }
+                else if (genFile.ends_with(".ctex"))
+                {
+                    uint64_t subUid = item.meta.uid ^ (std::hash<std::string>{}(genFile) + 0x517cc1b727220a95ULL);
+                    ResourceManager::Instance().RegisterResource(subUid, ResourceType::TEXTURE, genStem, item.pathStr, genFile);
                 }
             }
         }

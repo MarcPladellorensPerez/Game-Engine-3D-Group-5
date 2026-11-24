@@ -404,9 +404,16 @@ GameObject* Model::LoadToGameObject(const std::string& path, GameObject* parent)
             ComponentTexture* compTex = static_cast<ComponentTexture*>(meshGO->CreateComponent(ComponentType::TEXTURE));
             if (it != loadedTextures.end() && it->second != nullptr)
             {
-                // Reuse existing loaded texture!
-                compTex->SetTexture(it->second->GetTextureID(), it->second->GetPath(),
-                                    it->second->GetWidth(), it->second->GetHeight());
+                // Reuse existing loaded texture preserving reference count
+                if (it->second->GetTextureUID() != 0)
+                {
+                    compTex->SetResourceTexture(it->second->GetTextureUID());
+                }
+                else
+                {
+                    compTex->SetTexture(it->second->GetTextureID(), it->second->GetPath(),
+                                        it->second->GetWidth(), it->second->GetHeight());
+                }
                 texLoaded = true;
             }
             else if (compTex && compTex->LoadTexture(resolvedTexPath))

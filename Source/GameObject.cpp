@@ -108,7 +108,7 @@ int GameObject::GetChildIndex(GameObject* child) const
     return -1;
 }
 
-GameObject* GameObject::Clone(GameObject* newParent, bool appendCopySuffix)
+GameObject* GameObject::Clone(GameObject* newParent, bool appendCopySuffix, bool acquireResources)
 {
     std::string cloneName = name;
     if (appendCopySuffix)
@@ -139,7 +139,14 @@ GameObject* GameObject::Clone(GameObject* newParent, bool appendCopySuffix)
             copyMesh->showNormalsPerVertex = srcMesh->showNormalsPerVertex;
             if (srcMesh->GetMeshUID() != 0)
             {
-                copyMesh->SetResourceMesh(srcMesh->GetMeshUID());
+                if (acquireResources)
+                {
+                    copyMesh->SetResourceMesh(srcMesh->GetMeshUID());
+                }
+                else
+                {
+                    copyMesh->SetDeferredResourceUID(srcMesh->GetMeshUID(), srcMesh->meshName);
+                }
             }
             else if (srcMesh->GetVertexCount() > 0)
             {
@@ -157,7 +164,15 @@ GameObject* GameObject::Clone(GameObject* newParent, bool appendCopySuffix)
             copyTexture->showChecker = srcTexture->showChecker;
             if (srcTexture->GetTextureUID() != 0)
             {
-                copyTexture->SetResourceTexture(srcTexture->GetTextureUID());
+                if (acquireResources)
+                {
+                    copyTexture->SetResourceTexture(srcTexture->GetTextureUID());
+                }
+                else
+                {
+                    copyTexture->SetDeferredResourceUID(srcTexture->GetTextureUID(), srcTexture->GetPath(),
+                                                        srcTexture->GetWidth(), srcTexture->GetHeight(), srcTexture->GetChannels());
+                }
             }
             else if (srcTexture->GetPath() != "None" && !srcTexture->GetPath().empty())
             {
@@ -166,7 +181,7 @@ GameObject* GameObject::Clone(GameObject* newParent, bool appendCopySuffix)
             else if (srcTexture->GetTextureID() != 0)
             {
                 copyTexture->SetTexture(srcTexture->GetTextureID(), srcTexture->GetPath(),
-                                         srcTexture->GetWidth(), srcTexture->GetHeight());
+                                        srcTexture->GetWidth(), srcTexture->GetHeight());
             }
         }
     }
@@ -175,11 +190,49 @@ GameObject* GameObject::Clone(GameObject* newParent, bool appendCopySuffix)
     {
         if (child)
         {
-            child->Clone(copy, false);
+            child->Clone(copy, false, acquireResources);
         }
     }
 
     return copy;
+}
+
+void GameObject::ReleaseResourceReferences()
+{
+    if (ComponentMesh* mesh = GetComponent<ComponentMesh>())
+    {
+        mesh->ReleaseResourceReference();
+    }
+    if (ComponentTexture* texture = GetComponent<ComponentTexture>())
+    {
+        texture->ReleaseResourceReference();
+    }
+    for (GameObject* child : children)
+    {
+        if (child)
+        {
+            child->ReleaseResourceReferences();
+        }
+    }
+}
+
+void GameObject::AcquireResourceReferences()
+{
+    if (ComponentMesh* mesh = GetComponent<ComponentMesh>())
+    {
+        mesh->AcquireResourceReference();
+    }
+    if (ComponentTexture* texture = GetComponent<ComponentTexture>())
+    {
+        texture->AcquireResourceReference();
+    }
+    for (GameObject* child : children)
+    {
+        if (child)
+        {
+            child->AcquireResourceReferences();
+        }
+    }
 }
 
 Component* GameObject::CreateComponent(ComponentType type)

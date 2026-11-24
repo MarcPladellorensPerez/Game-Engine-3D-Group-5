@@ -8,6 +8,7 @@
 #include "ComponentMesh.h"
 #include "ComponentTexture.h"
 #include "Metadata.h"
+#include "ResourceManager.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <filesystem>
 
@@ -647,6 +648,8 @@ bool ModuleRender::CleanUp()
         delete defaultShader;
         defaultShader = nullptr;
     }
+
+    ResourceManager::Instance().CleanUp();
 
     if (context != nullptr)
     {

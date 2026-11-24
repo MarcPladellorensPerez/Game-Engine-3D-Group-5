@@ -28,7 +28,11 @@ void ComponentMesh::CleanUp()
 {
     if (meshUID != 0)
     {
-        ResourceManager::Instance().ReleaseMesh(meshUID);
+        if (hasResourceRef)
+        {
+            ResourceManager::Instance().ReleaseMesh(meshUID);
+            hasResourceRef = false;
+        }
         meshUID = 0;
         VAO = 0;
         VBO = 0;
@@ -55,11 +59,13 @@ void ComponentMesh::CleanUp()
 
 void ComponentMesh::SetResourceMesh(uint64_t uid)
 {
+    if (meshUID == uid && uid != 0 && hasResourceRef) return;
     CleanUp();
     ResourceMesh* res = ResourceManager::Instance().RequestMesh(uid);
     if (res)
     {
         meshUID = res->uid;
+        hasResourceRef = true;
         meshName = res->name;
         aabbMin = res->aabbMin;
         aabbMax = res->aabbMax;
@@ -79,6 +85,7 @@ void ComponentMesh::SetResourceMesh(const std::string& libraryPath)
     if (res)
     {
         meshUID = res->uid;
+        hasResourceRef = true;
         meshName = res->name;
         aabbMin = res->aabbMin;
         aabbMax = res->aabbMax;
@@ -88,6 +95,50 @@ void ComponentMesh::SetResourceMesh(const std::string& libraryPath)
         vertices = res->vertices;
         indices = res->indices;
         GenerateNormalsBuffers();
+    }
+}
+
+void ComponentMesh::SetDeferredResourceUID(uint64_t uid, const std::string& name)
+{
+    CleanUp();
+    meshUID = uid;
+    meshName = name;
+    hasResourceRef = false;
+}
+
+void ComponentMesh::ReleaseResourceReference()
+{
+    if (meshUID != 0 && hasResourceRef)
+    {
+        ResourceManager::Instance().ReleaseMesh(meshUID);
+        hasResourceRef = false;
+        VAO = 0;
+        VBO = 0;
+        EBO = 0;
+    }
+}
+
+void ComponentMesh::AcquireResourceReference()
+{
+    if (meshUID != 0 && !hasResourceRef)
+    {
+        ResourceMesh* res = ResourceManager::Instance().RequestMesh(meshUID);
+        if (res)
+        {
+            hasResourceRef = true;
+            meshName = res->name;
+            aabbMin = res->aabbMin;
+            aabbMax = res->aabbMax;
+            VAO = res->VAO;
+            VBO = res->VBO;
+            EBO = res->EBO;
+            vertices = res->vertices;
+            indices = res->indices;
+            if (vertexNormalsVAO == 0 && faceNormalsVAO == 0)
+            {
+                GenerateNormalsBuffers();
+            }
+        }
     }
 }
 

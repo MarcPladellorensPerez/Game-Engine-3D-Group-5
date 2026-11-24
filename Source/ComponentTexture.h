@@ -16,6 +16,9 @@ public:
     void SetTexture(unsigned int id, const std::string& filepath, int w, int h);
     void SetResourceTexture(uint64_t uid);
     void SetResourceTexture(const std::string& libraryOrAssetPath);
+    void SetDeferredResourceUID(uint64_t uid, const std::string& texPath, int w, int h, int ch);
+    void ReleaseResourceReference();
+    void AcquireResourceReference();
     uint64_t GetTextureUID() const { return textureUID; }
     void Bind(unsigned int slot = 0);
     void Unbind(unsigned int slot = 0);
@@ -32,6 +35,7 @@ public:
 private:
     unsigned int textureID = 0;
     uint64_t textureUID = 0;
+    bool hasResourceRef = false;
     std::string path = "None";
     int width = 0;
     int height = 0;

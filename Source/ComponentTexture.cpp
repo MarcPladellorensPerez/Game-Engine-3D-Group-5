@@ -36,7 +36,11 @@ void ComponentTexture::CleanUp()
 {
     if (textureUID != 0)
     {
-        ResourceManager::Instance().ReleaseTexture(textureUID);
+        if (hasResourceRef)
+        {
+            ResourceManager::Instance().ReleaseTexture(textureUID);
+            hasResourceRef = false;
+        }
         textureUID = 0;
         textureID = 0;
     }
@@ -50,11 +54,13 @@ void ComponentTexture::CleanUp()
 
 void ComponentTexture::SetResourceTexture(uint64_t uid)
 {
+    if (textureUID == uid && uid != 0 && hasResourceRef) return;
     CleanUp();
     ResourceTexture* res = ResourceManager::Instance().RequestTexture(uid);
     if (res)
     {
         textureUID = res->uid;
+        hasResourceRef = true;
         textureID = res->textureID;
         width = res->width;
         height = res->height;
@@ -70,11 +76,50 @@ void ComponentTexture::SetResourceTexture(const std::string& libraryOrAssetPath)
     if (res)
     {
         textureUID = res->uid;
+        hasResourceRef = true;
         textureID = res->textureID;
         width = res->width;
         height = res->height;
         channels = res->channels;
         path = res->assetsPath.empty() ? res->libraryPath : res->assetsPath;
+    }
+}
+
+void ComponentTexture::SetDeferredResourceUID(uint64_t uid, const std::string& texPath, int w, int h, int ch)
+{
+    CleanUp();
+    textureUID = uid;
+    path = texPath;
+    width = w;
+    height = h;
+    channels = ch;
+    hasResourceRef = false;
+}
+
+void ComponentTexture::ReleaseResourceReference()
+{
+    if (textureUID != 0 && hasResourceRef)
+    {
+        ResourceManager::Instance().ReleaseTexture(textureUID);
+        hasResourceRef = false;
+        textureID = 0;
+    }
+}
+
+void ComponentTexture::AcquireResourceReference()
+{
+    if (textureUID != 0 && !hasResourceRef)
+    {
+        ResourceTexture* res = ResourceManager::Instance().RequestTexture(textureUID);
+        if (res)
+        {
+            hasResourceRef = true;
+            textureID = res->textureID;
+            width = res->width;
+            height = res->height;
+            channels = res->channels;
+            path = res->assetsPath.empty() ? res->libraryPath : res->assetsPath;
+        }
     }
 }
 
@@ -90,24 +135,6 @@ void ComponentTexture::SetTexture(unsigned int id, const std::string& filepath, 
 
 bool ComponentTexture::LoadTexture(const std::string& filepath)
 {
-    // Check ResourceManager cache first to reuse existing GPU texture and ref count
-    ResourceTexture* res = ResourceManager::Instance().RequestTextureByPath(filepath);
-    if (res && res->textureID != 0)
-    {
-        CleanUp();
-        textureUID = res->uid;
-        textureID = res->textureID;
-        width = res->width;
-        height = res->height;
-        channels = res->channels;
-        path = res->assetsPath.empty() ? res->libraryPath : res->assetsPath;
-        ownsTexture = false;
-        return true;
-    }
-
-    EnsureDevILInit();
-    CleanUp();
-
     std::string finalPath = filepath;
     if (!std::filesystem::exists(finalPath))
     {
@@ -119,6 +146,29 @@ bool ComponentTexture::LoadTexture(const std::string& filepath)
             finalPath = alt;
         }
     }
+
+    // Check ResourceManager cache first to reuse existing GPU texture and ref count
+    ResourceTexture* res = ResourceManager::Instance().RequestTextureByPath(finalPath);
+    if (res && res->textureID != 0)
+    {
+        CleanUp();
+        textureUID = res->uid;
+        hasResourceRef = true;
+        textureID = res->textureID;
+        width = res->width;
+        height = res->height;
+        channels = res->channels;
+        path = res->assetsPath.empty() ? res->libraryPath : res->assetsPath;
+        ownsTexture = false;
+        return true;
+    }
+    else if (res)
+    {
+        ResourceManager::Instance().ReleaseTexture(res->uid);
+    }
+
+    EnsureDevILInit();
+    CleanUp();
 
     // Load with DevIL (supports DDS, PNG, TGA, JPG, etc.)
     ILuint imgId = 0;

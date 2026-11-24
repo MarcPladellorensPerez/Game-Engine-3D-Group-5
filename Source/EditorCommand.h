@@ -40,6 +40,7 @@ public:
     {
         if (!inScene && gameObject != nullptr && App && App->renderer)
         {
+            gameObject->AcquireResourceReferences();
             App->renderer->AddGameObject(gameObject, parent, index);
             inScene = true;
             App->renderer->SetSelectedGameObject(gameObject);
@@ -51,6 +52,7 @@ public:
         if (inScene && gameObject != nullptr && App && App->renderer)
         {
             App->renderer->DetachGameObject(gameObject);
+            gameObject->ReleaseResourceReferences();
             inScene = false;
         }
     }
@@ -108,6 +110,7 @@ public:
         if (inScene && gameObject != nullptr && App && App->renderer)
         {
             App->renderer->DetachGameObject(gameObject);
+            gameObject->ReleaseResourceReferences();
             inScene = false;
         }
     }
@@ -116,6 +119,7 @@ public:
     {
         if (!inScene && gameObject != nullptr && App && App->renderer)
         {
+            gameObject->AcquireResourceReferences();
             App->renderer->AddGameObject(gameObject, parent, index);
             inScene = true;
             App->renderer->SetSelectedGameObject(gameObject);
@@ -252,11 +256,16 @@ public:
         {
             if (newObject)
             {
+                newObject->AcquireResourceReferences();
                 App->renderer->AddGameObject(newObject, nullptr);
             }
             for (GameObject* go : oldObjects)
             {
-                if (go) App->renderer->DetachGameObject(go);
+                if (go)
+                {
+                    App->renderer->DetachGameObject(go);
+                    go->ReleaseResourceReferences();
+                }
             }
             replaced = true;
             if (newObject) App->renderer->SetSelectedGameObject(newObject);
@@ -270,11 +279,13 @@ public:
             if (newObject)
             {
                 App->renderer->DetachGameObject(newObject);
+                newObject->ReleaseResourceReferences();
             }
             for (size_t i = 0; i < oldObjects.size(); ++i)
             {
                 if (oldObjects[i])
                 {
+                    oldObjects[i]->AcquireResourceReferences();
                     App->renderer->AddGameObject(oldObjects[i], nullptr, static_cast<int>(i));
                 }
             }

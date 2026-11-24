@@ -248,6 +248,7 @@ void ResourceManager::CleanUp()
 void ResourceManager::RegisterResource(uint64_t uid, ResourceType type, const std::string& name, const std::string& assetPath, const std::string& libraryPath)
 {
     if (resources.find(uid) != resources.end()) return;
+    if (!libraryPath.empty() && libraryPathToUID.find(NormalizePath(libraryPath)) != libraryPathToUID.end()) return;
 
     if (type == ResourceType::MESH)
     {
@@ -421,6 +422,11 @@ void ResourceManager::UnregisterResource(uint64_t uid)
     auto it = resources.find(uid);
     if (it != resources.end())
     {
+        if (it->second->referenceCount > 0)
+        {
+            LOG("[ResourceManager] WARNING: Unregistering resource '%s' while reference count is %u",
+                it->second->name.c_str(), it->second->referenceCount);
+        }
         if (!it->second->assetsPath.empty())
         {
             assetPathToUID.erase(NormalizePath(it->second->assetsPath));
